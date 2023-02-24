@@ -1,6 +1,13 @@
+import jax.numpy as jnp
+
 class Simulation:
-    def __init__(self):
-        pass
+    def __init__(self, n, size=1024, n_cells=16):
+        self.grid_size = (size // n_cells) + (size % n_cells > 0)
+        self._init_particles(n)
+
+    def _init_particles(self, n):
+        self.positions = jnp.zeros((2, n))
+        self.velocities = jnp.zeros((2, n))
 
     def step(self, n):
         for _ in range(n):
