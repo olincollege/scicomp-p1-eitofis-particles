@@ -10,11 +10,14 @@ class Simulation:
         self.positions = jnp.zeros((2, n))
         self.velocities = jnp.zeros((2, n))
 
-    def step(self, n):
+    def run(self, n):
         for _ in range(n):
-            self._get_collisions()
-            self._update_velocities()
-            self._move()
+            self.step()
+
+    def step(self):
+        self._get_collisions()
+        self._update_velocities()
+        self._move()
 
     def _build_grid(self):
         grid_positions = self.positions // self.grid_size
@@ -38,12 +41,12 @@ class Simulation:
 
         return cell_particle_ids, grid_starts, grid_ends
 
-    def _get_neighbors(self):
+    def _get_neighbors(self, cell_particle_ids, grid_starts, grid_ends):
         pass
 
     def _get_broad_collisions(self):
         cell_particle_ids, grid_starts, grid_ends = self._build_grid()
-        self._get_neighbors()
+        self._get_neighbors(cell_particle_ids, grid_starts, grid_ends)
 
     def _get_narrow_collisions(self):
         pass
