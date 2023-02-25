@@ -13,7 +13,7 @@ def _init_particles(n, seed, size):
 
 
 def _build_grid(n_cells, cell_size, ids, positions):
-    grid_positions = (positions // cell_size).astype(jnp.int32)
+    grid_positions = (positions // cell_size).astype(jnp.int32) + 1
     cell_ids = grid_positions[0] + grid_positions[1] * n_cells
 
     cell_particle_ids = jnp.stack([cell_ids, ids], axis=-1)
@@ -25,7 +25,7 @@ def _build_grid(n_cells, cell_size, ids, positions):
 
     cell_start_ids = cell_particle_ids[1:, 0][is_cell_change]
     cell_start_idxs = cell_particle_idxs[1:][is_cell_change]
-    grid_starts = jnp.zeros(n_cells ** 2, dtype=jnp.int32)
+    grid_starts = jnp.zeros(n_cells ** 2 + 2, dtype=jnp.int32)
     grid_starts = grid_starts.at[cell_start_ids].set(cell_start_idxs)
 
     cell_end_ids = cell_particle_ids[:-1, 0][is_cell_change]
@@ -84,6 +84,7 @@ def _step(n, size, n_cells, cell_size, ids, pos, vel):
 
 def run(steps, n, size=1024, n_cells=2, seed=42):
     cell_size = (size // n_cells) + (size % n_cells > 0)
+    n_cells = n_cells + 2  # Add outer padding to grid
     ids, pos, vel = _init_particles(n, seed, size)
     for _ in range(steps):
         _step(n, size, n_cells, cell_size, ids, pos, vel)
