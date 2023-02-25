@@ -1,7 +1,7 @@
 import sys
 import argparse
 
-from simulation import Simulation
+import simulation
 
 
 def parse_args(args):
@@ -13,16 +13,18 @@ def parse_args(args):
     return args
 
 
-def init(args):
+def run(args):
     """Initialize a new simulation."""
-    return Simulation(args.n_particles)
+    return simulation.run(
+        steps=args.steps,
+        n=args.n_particles,
+    )
 
 
 def main(raw_args):
     """Run simulation."""
     args = parse_args(raw_args)
-    sim = init(args)
-    sim.run(args.steps)
+    run(args)
 
 
 if __name__ == "__main__":
