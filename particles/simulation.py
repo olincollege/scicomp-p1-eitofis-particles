@@ -20,7 +20,7 @@ class Simulation:
         self._move()
 
     def _build_grid(self):
-        grid_positions = self.positions // self.grid_size
+        grid_positions = (self.positions // self.grid_size).astype(jnp.int32)
         cell_ids = grid_positions[0] + grid_positions[1] * self.grid_size
 
         cell_particle_ids = jnp.stack([cell_ids, self.ids], axis=-1)
@@ -32,12 +32,12 @@ class Simulation:
         cell_start_ids = cell_particle_ids[:-1, 0][is_cell_change]
         cell_start_idxs = cell_particle_idxs[:-1][is_cell_change]
         grid_starts = jnp.zeros(self.grid_size ** 2)
-        grid_starts[cell_start_ids] = cell_start_idxs
+        grid_starts = grid_starts.at[cell_start_ids].set(cell_start_idxs)
 
         cell_end_ids = cell_particle_ids[1:, 0][is_cell_change]
         cell_end_idxs = cell_particle_idxs[1:][is_cell_change]
         grid_ends = jnp.zeros(self.grid_size ** 2) - 1
-        grid_ends[cell_end_ids] = cell_end_idxs
+        grid_ends = grid_ends.at[cell_end_ids].set(cell_end_idxs)
 
         return cell_particle_ids, grid_starts, grid_ends
 
