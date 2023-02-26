@@ -9,7 +9,7 @@ def _init_particles(n, seed, size):
     key, rng = jax.random.split(key)
     positions = jax.random.uniform(rng, (2, n), maxval=size)
     _, rng = jax.random.split(key)
-    velocities = jax.random.uniform(rng, (2, n), maxval=1)
+    velocities = jax.random.uniform(rng, (2, n), minval=-1, maxval=1)
     return ids, positions, velocities
 
 
@@ -122,19 +122,54 @@ def _get_collisions(n_cells, cell_size, ids, pos):
         n_cells, cell_size, ids, pos
     )
     collisions = _get_narrow_collisions(pos, particle_ids, neighbors, neighbor_mask)
-    return collisions
+    return particle_ids, neighbors, collisions
 
 
-def _get_particle_collision_response():
-    pass
+def _dot(v1, v2):
+    return jnp.sum(v1 * v2, axis=0)
+
+
+def _get_particle_collision_response(
+    positions, velocities, particle_ids, neighbors, collisions
+):
+    def _map_func(particle_id, neighbors, collisions):
+        particle_position = positions[:, particle_id]
+        particle_velocity = velocities[:, particle_id]
+        particle_mass = 1
+        neighbor_positions = positions[:, neighbors]
+        neighbor_velocities = velocities[:, neighbors]
+        neighbor_masses = jnp.ones_like(neighbors)
+
+        collision_normals = neighbor_positions - particle_position[:, None]
+        magnitudes = jnp.linalg.norm(collision_normals, axis=0)
+        collision_normals = jnp.nan_to_num(collision_normals / magnitudes)
+
+        relative_velocities = neighbor_velocities - particle_velocity[:, None]
+
+        numerator = _dot(-2 * relative_velocities, collision_normals)
+        denominator = _dot(
+            collision_normals,
+            collision_normals * (1 / neighbor_masses + 1 / particle_mass)
+        )
+        impulse = jnp.nan_to_num(numerator / denominator)
+
+        velocity_changes = (impulse / particle_mass) * -1
+        velocity_changes = velocity_changes * collisions
+        velocity_changes = velocity_changes * collision_normals
+        return velocity_changes
+
+    velocity_changes = jax.vmap(_map_func)(
+        particle_ids, neighbors, collisions
+    )
+    return velocity_changes
 
 
 def _get_wall_collision_response():
     pass
 
 
-def _update_velocities(_):
-    _get_particle_collision_response()
+def _update_velocities(pos, vel, particle_ids, neighbors, collisions):
+    _get_particle_collision_response(pos, vel, particle_ids, neighbors, collisions)
     _get_wall_collision_response()
 
 
@@ -143,8 +178,8 @@ def _move():
 
 
 def _step(n_cells, cell_size, ids, pos, vel):
-    _get_collisions(n_cells, cell_size, ids, pos)
-    _update_velocities(vel)
+    particle_ids, neighbors, collisions = _get_collisions(n_cells, cell_size, ids, pos)
+    _update_velocities(pos, vel, particle_ids, neighbors, collisions)
     _move()
 
 
