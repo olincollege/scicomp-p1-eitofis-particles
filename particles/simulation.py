@@ -171,16 +171,25 @@ def _get_particle_collision_response(
     return velocity_changes
 
 
-def _get_wall_collision_response():
-    pass
+def _get_wall_collision_response(size, positions, velocities):
+    radii = jnp.ones(positions.shape[1])
+
+    oob_x = ((positions[0, :] - radii) <= 0) | ((positions[0, :] + radii) >= size)
+    oob_y = ((positions[1, :] - radii) <= 0) | ((positions[1, :] + radii) >= size)
+    oob = jnp.stack([oob_x, oob_y], axis=0)
+
+    inverse_velocities = velocities * -2
+    velocity_changes = inverse_velocities * oob
+    return velocity_changes
 
 
-def _update_velocities(pos, vel, particle_ids, neighbors, collisions):
+def _update_velocities(size, pos, vel, particle_ids, neighbors, collisions):
     velocity_changes = _get_particle_collision_response(
         pos, vel, particle_ids, neighbors, collisions
     )
     vel = vel + velocity_changes
-    _get_wall_collision_response()
+    velocity_changes = _get_wall_collision_response(size, pos, vel)
+    vel = vel + velocity_changes
     return vel
 
 
@@ -188,9 +197,9 @@ def _move():
     pass
 
 
-def _step(n_cells, cell_size, ids, pos, vel):
+def _step(size, n_cells, cell_size, ids, pos, vel):
     particle_ids, neighbors, collisions = _get_collisions(n_cells, cell_size, ids, pos)
-    vel = _update_velocities(pos, vel, particle_ids, neighbors, collisions)
+    vel = _update_velocities(size, pos, vel, particle_ids, neighbors, collisions)
     _move()
     return pos, vel
 
@@ -200,4 +209,4 @@ def run(steps, n, size=6, n_cells=3, seed=42):
     n_cells = n_cells + 2  # Add outer padding to grid
     ids, pos, vel = _init_particles(n, seed, size)
     for _ in range(steps):
-        pos, vel = _step(n_cells, cell_size, ids, pos, vel)
+        pos, vel = _step(size, n_cells, cell_size, ids, pos, vel)
