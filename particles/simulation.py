@@ -45,9 +45,15 @@ def _get_neighbors(n_cells, cell_particle_ids, grid_starts, grid_ends):
     grid_cell_counts = jnp.reshape(cell_counts, (n_cells, n_cells))
     kernel = jnp.ones((3, 3), dtype=jnp.int32)
     neighbor_counts = signal.convolve2d(
-        grid_cell_counts[1:-1, 1:-1], kernel, mode="same"
+        grid_cell_counts, kernel, mode="same"
     ).astype(jnp.int32)
     max_neighbors = jnp.max(neighbor_counts).item()
+
+    neighbor_counts = jnp.reshape(neighbor_counts, n_cells ** 2)
+    particle_counts = neighbor_counts[cell_particle_ids[:, 0]]
+    neighbor_mask = jnp.zeros((particle_counts.shape[0], max_neighbors))
+    neighbor_mask = neighbor_mask + jnp.arange(0, max_neighbors)
+    neighbor_mask = neighbor_mask < particle_counts[:, None]
 
     def _map_func(cell_id):
         _idxs = jnp.array([
@@ -77,24 +83,50 @@ def _get_neighbors(n_cells, cell_particle_ids, grid_starts, grid_ends):
         return neighbors
 
     neighbors = jax.vmap(_map_func)(cell_particle_ids[:, 0])
-    return neighbors
+    return neighbors, neighbor_mask
 
 
 def _get_broad_collisions(n_cells, cell_size, ids, pos):
     cell_particle_ids, grid_starts, grid_ends = _build_grid(
         n_cells, cell_size, ids, pos
     )
-    neighbors = _get_neighbors(n_cells, cell_particle_ids, grid_starts, grid_ends)
-    return cell_particle_ids, neighbors
+    neighbors, neighbor_mask = _get_neighbors(
+        n_cells, cell_particle_ids, grid_starts, grid_ends
+    )
+    particle_ids = cell_particle_ids[:, 1]
+    return particle_ids, neighbors, neighbor_mask
 
 
-def _get_narrow_collisions():
-    pass
+def _get_narrow_collisions(positions, particle_ids, neighbors, neighbor_mask):
+    def _map_func(particle_id, neighbors, mask):
+        same_id_mask = neighbors != particle_id
+        mask = mask & same_id_mask
+
+        current_position = positions[:, particle_id]
+        current_radius = 1
+        neighbor_positions = positions[:, neighbors]
+        neighbor_radii = jnp.ones_like(neighbors)
+
+        distances = (
+            (current_position[0] - neighbor_positions[0]) ** 2 +
+            (current_position[1] - neighbor_positions[1]) ** 2
+        )
+        collision_distance = (current_radius + neighbor_radii) ** 2
+        collides = distances <= collision_distance
+
+        mask = mask & collides
+        return mask
+
+    collisions = jax.vmap(_map_func)(particle_ids, neighbors, neighbor_mask)
+    return collisions
 
 
 def _get_collisions(n_cells, cell_size, ids, pos):
-    _get_broad_collisions(n_cells, cell_size, ids, pos)
-    _get_narrow_collisions()
+    particle_ids, neighbors, neighbor_mask = _get_broad_collisions(
+        n_cells, cell_size, ids, pos
+    )
+    collisions = _get_narrow_collisions(pos, particle_ids, neighbors, neighbor_mask)
+    return collisions
 
 
 def _get_particle_collision_response():
@@ -120,7 +152,7 @@ def _step(n_cells, cell_size, ids, pos, vel):
     _move()
 
 
-def run(steps, n, size=1024, n_cells=2, seed=42):
+def run(steps, n, size=6, n_cells=3, seed=42):
     cell_size = (size // n_cells) + (size % n_cells > 0)
     n_cells = n_cells + 2  # Add outer padding to grid
     ids, pos, vel = _init_particles(n, seed, size)
