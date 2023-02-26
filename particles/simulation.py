@@ -193,20 +193,21 @@ def _update_velocities(size, pos, vel, particle_ids, neighbors, collisions):
     return vel
 
 
-def _move():
-    pass
+def _move(positions, velocities, dt):
+    positions = positions + velocities * dt
+    return positions
 
 
-def _step(size, n_cells, cell_size, ids, pos, vel):
+def _step(size, n_cells, cell_size, ids, pos, vel, dt):
     particle_ids, neighbors, collisions = _get_collisions(n_cells, cell_size, ids, pos)
     vel = _update_velocities(size, pos, vel, particle_ids, neighbors, collisions)
-    _move()
+    pos = _move(pos, vel, dt)
     return pos, vel
 
 
-def run(steps, n, size=6, n_cells=3, seed=42):
+def run(steps, n, size=6, n_cells=3, dt=0.01, seed=42):
     cell_size = (size // n_cells) + (size % n_cells > 0)
     n_cells = n_cells + 2  # Add outer padding to grid
     ids, pos, vel = _init_particles(n, seed, size)
     for _ in range(steps):
-        pos, vel = _step(size, n_cells, cell_size, ids, pos, vel)
+        pos, vel = _step(size, n_cells, cell_size, ids, pos, vel, dt)
