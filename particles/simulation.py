@@ -69,14 +69,19 @@ def _get_neighbors(n_cells, cell_particle_ids, grid_starts, grid_ends):
         ])
         neighbors = jnp.zeros(max_neighbors, dtype=jnp.int32)
         idx = 0
-        for cell_idx in neighbor_cells:
+
+        def _body_func(i, state):
+            neighbors, idx = state
             def _body_func(i, state):
                 neighbors, idx = state
                 neighbors = neighbors.at[idx].set(cell_particle_ids[i, 1])
                 return neighbors, idx + 1
-            start = grid_starts[cell_idx]
-            end = grid_ends[cell_idx]
+            start = grid_starts[neighbor_cells[i]]
+            end = grid_ends[neighbor_cells[i]]
             neighbors, idx = jax.lax.fori_loop(start, end, _body_func, (neighbors, idx))
+            return neighbors, idx
+        neighbors, _ = jax.lax.fori_loop(0, 9, _body_func, (neighbors, idx))
+
         return neighbors
     neighbors = jax.vmap(_map_func)(cell_particle_ids[:, 0])
     return neighbors, neighbor_mask
@@ -156,11 +161,13 @@ def _get_particle_collision_response(
         velocity_changes = (impulse / particle_mass) * -1
         velocity_changes = velocity_changes * collisions
         velocity_changes = velocity_changes * collision_normals
+        velocity_changes = jnp.sum(velocity_changes, axis=-1)
         return velocity_changes
 
     velocity_changes = jax.vmap(_map_func)(
         particle_ids, neighbors, collisions
     )
+    velocity_changes = jnp.transpose(velocity_changes)
     return velocity_changes
 
 
@@ -169,8 +176,12 @@ def _get_wall_collision_response():
 
 
 def _update_velocities(pos, vel, particle_ids, neighbors, collisions):
-    _get_particle_collision_response(pos, vel, particle_ids, neighbors, collisions)
+    velocity_changes = _get_particle_collision_response(
+        pos, vel, particle_ids, neighbors, collisions
+    )
+    vel = vel + velocity_changes
     _get_wall_collision_response()
+    return vel
 
 
 def _move():
@@ -179,8 +190,9 @@ def _move():
 
 def _step(n_cells, cell_size, ids, pos, vel):
     particle_ids, neighbors, collisions = _get_collisions(n_cells, cell_size, ids, pos)
-    _update_velocities(pos, vel, particle_ids, neighbors, collisions)
+    vel = _update_velocities(pos, vel, particle_ids, neighbors, collisions)
     _move()
+    return pos, vel
 
 
 def run(steps, n, size=6, n_cells=3, seed=42):
@@ -188,4 +200,4 @@ def run(steps, n, size=6, n_cells=3, seed=42):
     n_cells = n_cells + 2  # Add outer padding to grid
     ids, pos, vel = _init_particles(n, seed, size)
     for _ in range(steps):
-        _step(n_cells, cell_size, ids, pos, vel)
+        pos, vel = _step(n_cells, cell_size, ids, pos, vel)
