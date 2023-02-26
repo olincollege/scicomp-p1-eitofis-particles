@@ -1,14 +1,15 @@
+import jax
 import jax.numpy as jnp
-from jax import random
+from jax.scipy import signal
 
 
 def _init_particles(n, seed, size):
     ids = jnp.arange(0, n)
-    key = random.PRNGKey(seed)
-    key, rng = random.split(key)
-    positions = random.uniform(rng, (2, n), maxval=size)
-    _, rng = random.split(key)
-    velocities = random.uniform(rng, (2, n), maxval=1)
+    key = jax.random.PRNGKey(seed)
+    key, rng = jax.random.split(key)
+    positions = jax.random.uniform(rng, (2, n), maxval=size)
+    _, rng = jax.random.split(key)
+    velocities = jax.random.uniform(rng, (2, n), maxval=1)
     return ids, positions, velocities
 
 
@@ -25,7 +26,7 @@ def _build_grid(n_cells, cell_size, ids, positions):
 
     cell_start_ids = cell_particle_ids[1:, 0][is_cell_change]
     cell_start_idxs = cell_particle_idxs[1:][is_cell_change]
-    grid_starts = jnp.zeros(n_cells ** 2 + 2, dtype=jnp.int32)
+    grid_starts = jnp.zeros(n_cells ** 2, dtype=jnp.int32)
     grid_starts = grid_starts.at[cell_start_ids].set(cell_start_idxs)
 
     cell_end_ids = cell_particle_ids[:-1, 0][is_cell_change]
@@ -39,23 +40,60 @@ def _build_grid(n_cells, cell_size, ids, positions):
     return cell_particle_ids, grid_starts, grid_ends
 
 
-def _get_neighbors(cell_particle_ids, grid_starts, grid_ends):
-    pass
+def _get_neighbors(n_cells, cell_particle_ids, grid_starts, grid_ends):
+    cell_counts = grid_ends - grid_starts
+    grid_cell_counts = jnp.reshape(cell_counts, (n_cells, n_cells))
+    kernel = jnp.ones((3, 3), dtype=jnp.int32)
+    neighbor_counts = signal.convolve2d(
+        grid_cell_counts[1:-1, 1:-1], kernel, mode="same"
+    ).astype(jnp.int32)
+    max_neighbors = jnp.max(neighbor_counts).item()
+
+    def _map_func(cell_id):
+        _idxs = jnp.array([
+            cell_id - 1 - n_cells,
+            cell_id - n_cells,
+            cell_id + 1 - n_cells,
+            cell_id - 1,
+            cell_id,
+            cell_id + 1,
+            cell_id - 1 + n_cells,
+            cell_id + n_cells,
+            cell_id + 1 + n_cells,
+        ])
+        neighbors = jnp.zeros(max_neighbors, dtype=jnp.int32)
+        idx = 0
+        def _body_func(i, state):
+            neighbors, idx = state
+            def _body_func(i, state):
+                neighbors, idx = state
+                neighbors = neighbors.at[idx].set(cell_particle_ids[i, 1])
+                return neighbors, idx + 1
+            start = grid_starts[_idxs[i]]
+            end = grid_ends[_idxs[i]]
+            neighbors, idx = jax.lax.fori_loop(start, end, _body_func, (neighbors, idx))
+            return neighbors, idx
+        neighbors, _ = jax.lax.fori_loop(0, 9, _body_func, (neighbors, idx))
+        return neighbors
+
+    neighbors = jax.vmap(_map_func)(cell_particle_ids[:, 0])
+    return neighbors
 
 
-def _get_broad_collisions(n, size, n_cells, cell_size, ids, pos):
+def _get_broad_collisions(n_cells, cell_size, ids, pos):
     cell_particle_ids, grid_starts, grid_ends = _build_grid(
         n_cells, cell_size, ids, pos
     )
-    _get_neighbors(cell_particle_ids, grid_starts, grid_ends)
+    neighbors = _get_neighbors(n_cells, cell_particle_ids, grid_starts, grid_ends)
+    return cell_particle_ids, neighbors
 
 
 def _get_narrow_collisions():
     pass
 
 
-def _get_collisions(n, size, n_cells, cell_size, ids, pos):
-    _get_broad_collisions(n, size, n_cells, cell_size, ids, pos)
+def _get_collisions(n_cells, cell_size, ids, pos):
+    _get_broad_collisions(n_cells, cell_size, ids, pos)
     _get_narrow_collisions()
 
 
@@ -76,8 +114,8 @@ def _move():
     pass
 
 
-def _step(n, size, n_cells, cell_size, ids, pos, vel):
-    _get_collisions(n, size, n_cells, cell_size, ids, pos)
+def _step(n_cells, cell_size, ids, pos, vel):
+    _get_collisions(n_cells, cell_size, ids, pos)
     _update_velocities(vel)
     _move()
 
@@ -87,4 +125,4 @@ def run(steps, n, size=1024, n_cells=2, seed=42):
     n_cells = n_cells + 2  # Add outer padding to grid
     ids, pos, vel = _init_particles(n, seed, size)
     for _ in range(steps):
-        _step(n, size, n_cells, cell_size, ids, pos, vel)
+        _step(n_cells, cell_size, ids, pos, vel)
