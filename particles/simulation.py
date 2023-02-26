@@ -56,7 +56,7 @@ def _get_neighbors(n_cells, cell_particle_ids, grid_starts, grid_ends):
     neighbor_mask = neighbor_mask < particle_counts[:, None]
 
     def _map_func(cell_id):
-        _idxs = jnp.array([
+        neighbor_cells = jnp.array([
             cell_id - 1 - n_cells,
             cell_id - n_cells,
             cell_id + 1 - n_cells,
@@ -69,19 +69,15 @@ def _get_neighbors(n_cells, cell_particle_ids, grid_starts, grid_ends):
         ])
         neighbors = jnp.zeros(max_neighbors, dtype=jnp.int32)
         idx = 0
-        def _body_func(i, state):
-            neighbors, idx = state
+        for cell_idx in neighbor_cells:
             def _body_func(i, state):
                 neighbors, idx = state
                 neighbors = neighbors.at[idx].set(cell_particle_ids[i, 1])
                 return neighbors, idx + 1
-            start = grid_starts[_idxs[i]]
-            end = grid_ends[_idxs[i]]
+            start = grid_starts[cell_idx]
+            end = grid_ends[cell_idx]
             neighbors, idx = jax.lax.fori_loop(start, end, _body_func, (neighbors, idx))
-            return neighbors, idx
-        neighbors, _ = jax.lax.fori_loop(0, 9, _body_func, (neighbors, idx))
         return neighbors
-
     neighbors = jax.vmap(_map_func)(cell_particle_ids[:, 0])
     return neighbors, neighbor_mask
 
