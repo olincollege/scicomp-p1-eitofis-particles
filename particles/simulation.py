@@ -213,7 +213,7 @@ def _step(size, n_cells, cell_size, ids, pos, vel, dt):
     return pos, vel
 
 
-def run(steps, n, size, n_cells, dt, seed):
+def run(steps, n, size, n_cells, dt, seed, plot):
     cell_size = (size // n_cells) + (size % n_cells > 0)
     n_cells = n_cells + 2  # Add outer padding to grid
     ids, pos, vel = _init_particles(n, seed, size)
@@ -227,5 +227,7 @@ def run(steps, n, size, n_cells, dt, seed):
         print(i)
         print(f"Time: {end - start}")
 
-    # graph(size, all_pos)
-    render(size, all_pos)
+    if plot:
+        graph(size, all_pos)
+    else:
+        render(size, all_pos)

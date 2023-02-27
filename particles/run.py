@@ -32,6 +32,14 @@ def parse_args(args):
         "--seed", type=int, default=42,
         help="Random seed."
     )
+    parser.add_argument(
+        '--graph', action='store_true', default=False,
+        help=(
+            "Produce an interactive graph instead of rendering a gif. "
+            "NOTE: Significantly less performant - will fail to plot "
+            "for larger numbers of particles"
+        )
+    )
 
     args = parser.parse_args(args)
     return args
@@ -46,6 +54,7 @@ def run(args):
         n_cells=args.n_cells,
         dt=args.dt,
         seed=args.seed,
+        plot=args.graph,
     )
 
 
