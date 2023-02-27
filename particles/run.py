@@ -46,7 +46,7 @@ def parse_args(args):
 
 
 def run(args):
-    """Initialize a new simulation."""
+    """Run simulation."""
     return simulation.run(
         steps=args.steps,
         n=args.n_particles,
@@ -59,7 +59,7 @@ def run(args):
 
 
 def main(raw_args):
-    """Run simulation."""
+    """Main function."""
     args = parse_args(raw_args)
     run(args)
 

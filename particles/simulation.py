@@ -9,6 +9,18 @@ from render import render
 
 
 def _init_particles(n, seed, size):
+    """Initialize particle positions and velocities.
+
+    Args:
+        n: Number of particles.
+        size: Size of environment in each direction.
+        seed: Random seed.
+
+    Returns:
+        ids: Array of shape (n), all particle ids.
+        positions: Array of shape (2, n), all particle positions.
+        velocities: Array of shape (2, n), all particle velocities.
+    """
     ids = jnp.arange(0, n)
     key = jax.random.PRNGKey(seed)
     key, rng = jax.random.split(key)
@@ -19,6 +31,22 @@ def _init_particles(n, seed, size):
 
 
 def _build_grid(n_cells, cell_size, ids, positions):
+    """Construct uniform grid.
+
+    Args:
+        n_cells: Number of uniform grid cells in each direction.
+        cell_size: Size of single uniform grid cell.
+        ids: Array of shape (n), particle ids.
+        positions: Array of shape (2, n), particle positions.
+
+    Returns:
+        cell_particle_ids: Array of shape(2, n), mapping of uniform grid cell id
+            to particle id. Sorted by cell id.
+        grid_starts: Array of shape (n_cells), for each cell contains the first
+            index in which the cell appears in cell_particle_ids.
+        grid_ends: Array of shape (n_cells), for each cell contains the last + 1
+            index in which the cell appears in cell_particle_ids.
+    """
     grid_positions = (positions // cell_size).astype(jnp.int32) + 1
     cell_ids = grid_positions[0] + grid_positions[1] * n_cells
 
@@ -46,6 +74,24 @@ def _build_grid(n_cells, cell_size, ids, positions):
 
 
 def _get_neighbors(n_cells, cell_particle_ids, grid_starts, grid_ends):
+    """Gather neighbors from uniform grid.
+
+    Args:
+        n_cells: Number of uniform grid cells in each direction.
+        cell_particle_ids: Array of shape(2, n), mapping of uniform grid cell id
+            to particle id. Sorted by cell id.
+        grid_starts: Array of shape (n_cells), for each cell contains the first
+            index in which the cell appears in cell_particle_ids.
+        grid_ends: Array of shape (n_cells), for each cell contains the last + 1
+            index in which the cell appears in cell_particle_ids.
+
+    Returns:
+        neighbors: Array of shape (n, max_neighbors), contains each particles
+            neighbors with position corresponding to cell_particle_ids.
+        neighbors_mask: Array of shape (n, max_neighbors), contains mask where 1
+            for real value and 0 for padding, with position corresponding to
+            cell_particle_ids
+    """
     cell_counts = grid_ends - grid_starts
     grid_cell_counts = jnp.reshape(cell_counts, (n_cells, n_cells))
     kernel = jnp.ones((3, 3), dtype=jnp.int32)
@@ -93,6 +139,23 @@ def _get_neighbors(n_cells, cell_particle_ids, grid_starts, grid_ends):
 
 
 def _get_broad_collisions(n_cells, cell_size, ids, pos):
+    """Compute broad particle collisions.
+
+    Args:
+        n_cells: Number of uniform grid cells in each direction.
+        cell_size: Size of single uniform grid cell.
+        ids: Array of shape (n), particle ids.
+        pos: Array of shape (2, n), particle positions.
+
+    Returns:
+        particle_ids: Array of shape (n), contains particle ids no longer in
+            sorted order.
+        neighbors: Array of shape (n, max_neighbors), contains each particles
+            neighbors with position corresponding to particle_ids.
+        neighbors_mask: Array of shape (n, max_neighbors), contains mask where 1
+            for real value and 0 for padding, with position corresponding to
+            particle_ids.
+    """
     cell_particle_ids, grid_starts, grid_ends = _build_grid(
         n_cells, cell_size, ids, pos
     )
@@ -104,6 +167,22 @@ def _get_broad_collisions(n_cells, cell_size, ids, pos):
 
 
 def _get_narrow_collisions(positions, particle_ids, neighbors, neighbor_mask):
+    """Compute exact particle collisions.
+
+    Args:
+        positions: Array of shape (2, n), particle positions.
+        particle_ids: Array of shape (n), contains particle ids no longer in
+            sorted order.
+        neighbors: Array of shape (n, max_neighbors), contains each particles
+            neighbors with position corresponding to particle_ids.
+        neighbors_mask: Array of shape (n, max_neighbors), contains mask where 1
+            for real value and 0 for padding, with position corresponding to
+            particle_ids.
+
+    Returns:
+        collisions: Array of shape(n, max_neighbors), mask that is 1 if paticles
+            collide, 0 otherwise, with position corresponding to particle_ids
+    """
     def _map_func(particle_id, neighbors, mask):
         same_id_mask = neighbors != particle_id
         mask = mask & same_id_mask
@@ -128,6 +207,21 @@ def _get_narrow_collisions(positions, particle_ids, neighbors, neighbor_mask):
 
 
 def _get_collisions(n_cells, cell_size, ids, pos):
+    """Compute particle collisions.
+
+    Args:
+        n_cells: Number of uniform grid cells in each direction.
+        cell_size: Size of single uniform grid cell.
+        ids: Array of shape (n), particle ids.
+        pos: Array of shape (2, n), particle positions.
+
+    Returns:
+        neighbors: Array of shape (n, max_neighbors), contains each particles
+            neighbors with position corresponding to sorted particle ids
+        collisions: Array of shape(n, max_neighbors), mask that is 1 if paticles
+            collide, 0 otherwise, with position corresponding to sorted particle
+            ids.
+    """
     particle_ids, neighbors, neighbor_mask = _get_broad_collisions(
         n_cells, cell_size, ids, pos
     )
@@ -139,12 +233,28 @@ def _get_collisions(n_cells, cell_size, ids, pos):
 
 
 def _dot(v1, v2):
+    """Elementwise dot product."""
     return jnp.sum(v1 * v2, axis=0)
 
 
 def _get_particle_collision_response(
     positions, velocities, particle_ids, neighbors, collisions
 ):
+    """Compute particle collision resonses.
+
+    Args:
+        positions: Array of shape (2, n), particle positions.
+        velocities: Array of shape (2, n), particle velocities.
+        particle_ids: Array of shape (n), particle ids.
+        neighbors: Array of shape (n, max_neighbors), contains each particles
+            neighbors with position corresponding to sorted particle_ids.
+        collisions: Array of shape(n, max_neighbors), mask that is 1 if paticles
+            collide, 0 otherwise, with position corresponding to particle_ids.
+
+    Returns:
+        velocity_changes: Array of shape (2, n), changes in particle velocity
+            with position corresponding to particle_ids.
+    """
     def _map_func(particle_id, neighbors, collisions):
         particle_position = positions[:, particle_id]
         particle_velocity = velocities[:, particle_id]
@@ -180,6 +290,16 @@ def _get_particle_collision_response(
 
 
 def _get_wall_collision_response(size, positions, velocities):
+    """Compute wall collision resonses.
+
+    Args:
+        positions: Array of shape (2, n), particle positions.
+        velocities: Array of shape (2, n), particle velocities.
+
+    Returns:
+        velocity_changes: Array of shape (2, n), changes in particle velocity
+            with position corresponding to particle_ids.
+    """
     radii = jnp.ones(positions.shape[1])
 
     oob_x = ((positions[0, :] - radii) <= 0) | ((positions[0, :] + radii) >= size)
@@ -192,6 +312,21 @@ def _get_wall_collision_response(size, positions, velocities):
 
 
 def _update_velocities(size, pos, vel, particle_ids, neighbors, collisions):
+    """Compute collision responses and update velocities.
+
+    Args:
+        size: Size of environment in each direction.
+        pos: Array of shape (2, n), particle positions.
+        vel: Array of shape (2, n), particle velocities.
+        particle_ids: Array of shape (n), particle ids.
+        neighbors: Array of shape (n, max_neighbors), contains each particles
+            neighbors with position corresponding to sorted particle_ids.
+        collisions: Array of shape(n, max_neighbors), mask that is 1 if paticles
+            collide, 0 otherwise, with position corresponding to particle_ids.
+
+    Returns:
+        vel: Array of shape (2, n), new velocity.
+    """
     velocity_changes = _get_particle_collision_response(
         pos, vel, particle_ids, neighbors, collisions
     )
@@ -202,11 +337,13 @@ def _update_velocities(size, pos, vel, particle_ids, neighbors, collisions):
 
 
 def _move(positions, velocities, dt):
+    """Move particles."""
     positions = positions + velocities * dt
     return positions
 
 
 def _step(size, n_cells, cell_size, ids, pos, vel, dt):
+    """Take single step of the simulation."""
     neighbors, collisions = _get_collisions(n_cells, cell_size, ids, pos)
     vel = _update_velocities(size, pos, vel, ids, neighbors, collisions)
     pos = _move(pos, vel, dt)
@@ -214,6 +351,17 @@ def _step(size, n_cells, cell_size, ids, pos, vel, dt):
 
 
 def run(steps, n, size, n_cells, dt, seed, plot):
+    """Initialize and run the simulation.
+
+    Args:
+        steps: Number of simulation steps.
+        n: Number of particles.
+        size: Size of environment in each direction.
+        n_cells: Number of uniform grid cells in each direction.
+        dt: Timestep size.
+        seed: Random seed.
+        plot: Whether to plot or render. If True, plot.
+    """
     cell_size = (size // n_cells) + (size % n_cells > 0)
     n_cells = n_cells + 2  # Add outer padding to grid
     ids, pos, vel = _init_particles(n, seed, size)
