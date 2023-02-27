@@ -7,6 +7,8 @@ This project is for the Scientific Computing class at Olin College of Engineerin
 This project is incomplete. Further steps include:
   * Breaking up and optimizing simulation functions.
   * Implementing separation of overlapping particles.
+  * Fixing increasing-velocity bug.
+  * Variable radii / mass.
   * Real-time rendering (?)
 
 ## Setup
