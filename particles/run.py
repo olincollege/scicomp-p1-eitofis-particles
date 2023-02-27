@@ -8,7 +8,7 @@ def parse_args(args):
     """Parse command line arguments."""
     parser = argparse.ArgumentParser("Run Particle Simulation")
     parser.add_argument("--n_particles", type=int, default=10)
-    parser.add_argument("--steps", type=int, default=128)
+    parser.add_argument("--steps", type=int, default=64)
     args = parser.parse_args(args)
     return args
 

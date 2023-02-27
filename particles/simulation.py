@@ -1,13 +1,17 @@
+import time
+
 import jax
 import jax.numpy as jnp
 from jax.scipy import signal
+
+from graph import graph
 
 
 def _init_particles(n, seed, size):
     ids = jnp.arange(0, n)
     key = jax.random.PRNGKey(seed)
     key, rng = jax.random.split(key)
-    positions = jax.random.uniform(rng, (2, n), maxval=size)
+    positions = jax.random.uniform(rng, (2, n), minval=1, maxval=size - 1)
     _, rng = jax.random.split(key)
     velocities = jax.random.uniform(rng, (2, n), minval=-1, maxval=1)
     return ids, positions, velocities
@@ -127,7 +131,10 @@ def _get_collisions(n_cells, cell_size, ids, pos):
         n_cells, cell_size, ids, pos
     )
     collisions = _get_narrow_collisions(pos, particle_ids, neighbors, neighbor_mask)
-    return particle_ids, neighbors, collisions
+    idxs = jnp.argsort(particle_ids)
+    neighbors = neighbors[idxs]
+    collisions = collisions[idxs]
+    return neighbors, collisions
 
 
 def _dot(v1, v2):
@@ -199,15 +206,23 @@ def _move(positions, velocities, dt):
 
 
 def _step(size, n_cells, cell_size, ids, pos, vel, dt):
-    particle_ids, neighbors, collisions = _get_collisions(n_cells, cell_size, ids, pos)
-    vel = _update_velocities(size, pos, vel, particle_ids, neighbors, collisions)
+    neighbors, collisions = _get_collisions(n_cells, cell_size, ids, pos)
+    vel = _update_velocities(size, pos, vel, ids, neighbors, collisions)
     pos = _move(pos, vel, dt)
     return pos, vel
 
 
-def run(steps, n, size=6, n_cells=3, dt=0.01, seed=42):
+def run(steps, n, size=32, n_cells=8, dt=0.1, seed=42):
     cell_size = (size // n_cells) + (size % n_cells > 0)
     n_cells = n_cells + 2  # Add outer padding to grid
     ids, pos, vel = _init_particles(n, seed, size)
-    for _ in range(steps):
+
+    all_pos = [pos]
+    for i in range(steps):
+        start = time.time()
         pos, vel = _step(size, n_cells, cell_size, ids, pos, vel, dt)
+        all_pos.append(pos)
+        end = time.time()
+        print(i)
+        print(f"Time: {end - start}")
+    graph(size, all_pos)
