@@ -40,7 +40,7 @@ def _make_program(ctx, size):
             }
         ''',
     )
-    program['scale'].value = size + 1
+    program['scale'].value = (size / 2) + 1
     return program
 
 
@@ -64,13 +64,13 @@ def _make_buffers(ctx, n):
     return vbo, ibo, cbo
 
 
-def _make_images(ctx, cbo, vao, n, all_pos):
+def _make_images(ctx, cbo, vao, n, size, all_pos):
     fbo = ctx.simple_framebuffer((1024, 1024))
     fbo.use()
 
     images = []
     for pos in all_pos:
-        pos = jnp.transpose(pos).flatten()
+        pos = jnp.transpose(pos).flatten() - (size / 2)
         cbo.write(np.array(pos).astype("f4"))
         fbo.clear(0.0, 0.0, 0.0, 1.0)
         vao.render(instances=n)
@@ -90,6 +90,7 @@ def _make_gif(images):
 
 
 def render(size, all_pos):
+    print("Starting render...")
     n = len(all_pos[0][0])
 
     ctx = moderngl.create_standalone_context()
@@ -105,5 +106,5 @@ def render(size, all_pos):
         index_element_size=4,
     )
 
-    images = _make_images(ctx, cbo, vao, n, all_pos)
+    images = _make_images(ctx, cbo, vao, n, size, all_pos)
     _make_gif(images)

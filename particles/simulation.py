@@ -213,7 +213,7 @@ def _step(size, n_cells, cell_size, ids, pos, vel, dt):
     return pos, vel
 
 
-def run(steps, n, size=256, n_cells=64, dt=0.25, seed=42):
+def run(steps, n, size, n_cells, dt, seed):
     cell_size = (size // n_cells) + (size % n_cells > 0)
     n_cells = n_cells + 2  # Add outer padding to grid
     ids, pos, vel = _init_particles(n, seed, size)
