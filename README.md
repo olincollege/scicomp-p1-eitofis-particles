@@ -40,6 +40,6 @@ python particles/run.py --help
 
 ## Results
 
-Currently, the simulation is not fully functional. Collisions can be simulated, but the overall speed of the simulation drastically increases overtime.
+Currently, the simulation is not fully functional. Collisions can be simulated, but the overall speed of the simulation drastically increases overtime. Further, "sticking" behavior can be seen, as we currently do not separate particles on overlap.
 
 ![Simulation Gif](/assets/example.gif)
