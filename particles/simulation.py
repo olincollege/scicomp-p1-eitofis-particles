@@ -5,6 +5,7 @@ import jax.numpy as jnp
 from jax.scipy import signal
 
 from graph import graph
+from render import render
 
 
 def _init_particles(n, seed, size):
@@ -212,7 +213,7 @@ def _step(size, n_cells, cell_size, ids, pos, vel, dt):
     return pos, vel
 
 
-def run(steps, n, size=32, n_cells=8, dt=0.1, seed=42):
+def run(steps, n, size=256, n_cells=64, dt=0.25, seed=42):
     cell_size = (size // n_cells) + (size % n_cells > 0)
     n_cells = n_cells + 2  # Add outer padding to grid
     ids, pos, vel = _init_particles(n, seed, size)
@@ -225,4 +226,6 @@ def run(steps, n, size=32, n_cells=8, dt=0.1, seed=42):
         end = time.time()
         print(i)
         print(f"Time: {end - start}")
-    graph(size, all_pos)
+
+    # graph(size, all_pos)
+    render(size, all_pos)
