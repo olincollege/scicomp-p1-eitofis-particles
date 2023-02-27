@@ -4,6 +4,11 @@
 
 This project is for the Scientific Computing class at Olin College of Engineering. The goal for this project was to implement the simulation such that it could be GPU accelerated - as such, it is written entirely in JAX. Rendering of the results can be done in OpenGL or Plotly.
 
+This project is incomplete. Further steps include:
+  * Breaking up and optimizing simulation functions.
+  * Implementing separation of overlapping particles.
+  * Real-time rendering (?)
+
 ## Setup
 
 1. Clone the repository.
