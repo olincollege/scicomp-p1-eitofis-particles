@@ -25,7 +25,6 @@ def _init_particles(n, seed, size):
     ids = jnp.arange(0, n)
     key = jax.random.PRNGKey(seed)
     key, rng = jax.random.split(key)
-    # positions = jax.random.uniform(rng, (2, n), minval=1, maxval=size - 1)
     n_row_col = int(jnp.sqrt(n))
     x, y = jnp.meshgrid(
         jnp.linspace(1, size - 1, n_row_col),
@@ -38,7 +37,7 @@ def _init_particles(n, seed, size):
     return ids, positions, velocities
 
 
-def _build_grid(n_cells, cell_size, max_per_cell, ids, positions):
+def _build_grid(n_particles, n_cells, cell_size, max_per_cell, ids, positions):
     """Construct uniform grid.
 
     Args:
@@ -56,22 +55,24 @@ def _build_grid(n_cells, cell_size, max_per_cell, ids, positions):
             index in which the cell appears in cell_particle_ids.
     """
     grid_positions = (positions // cell_size).astype(jnp.int32) + 1
-    grid_positions = jnp.clip(grid_positions, 0, n_cells)
     cell_ids = grid_positions[0] + grid_positions[1] * n_cells
     cell_particle_ids = jnp.stack([cell_ids, ids], axis=-1)
 
     def _map_func(cell_id):
         return jnp.sum(jnp.where(cell_ids == cell_id, 1, 0))
     cell_counts = jax.vmap(_map_func)(jnp.arange(n_cells ** 2))
-
     cell_missing = max_per_cell - cell_counts
+
     cell_missing_mask = jnp.zeros((cell_counts.shape[0], max_per_cell))
     cell_missing_mask = cell_missing_mask + jnp.arange(0, cell_missing_mask.shape[1])
     cell_missing_mask = cell_missing_mask < cell_missing[:, None]
 
     pad_cells = jnp.zeros((cell_counts.shape[0], max_per_cell), dtype=jnp.int32)
     pad_cells = pad_cells + jnp.arange(0, pad_cells.shape[0])[:, None]
-    pad_cells = pad_cells[cell_missing_mask]
+
+    missing = ((n_cells ** 2) * max_per_cell) - n_particles
+    pad_cells = jnp.where(cell_missing_mask, pad_cells, -1).flatten()
+    pad_cells = jnp.sort(pad_cells)[-missing:]
 
     pad_particles = jnp.zeros_like(pad_cells, dtype=jnp.int32) - 1
     pad_cell_particle_ids = jnp.stack([pad_cells, pad_particles], axis=-1)
@@ -86,7 +87,6 @@ def _build_grid(n_cells, cell_size, max_per_cell, ids, positions):
     return cell_particle_ids, grid
 
 
-@partial(jax.jit, static_argnames=['n_cells'])
 def _get_neighbors(n_cells, cell_particle_ids, grid):
     """Gather neighbors from uniform grid.
 
@@ -124,7 +124,7 @@ def _get_neighbors(n_cells, cell_particle_ids, grid):
     return neighbors, neighbors_mask
 
 
-def _get_broad_collisions(n_cells, cell_size, max_per_cell, ids, pos):
+def _get_broad_collisions(n, n_cells, cell_size, max_per_cell, ids, pos):
     """Compute broad particle collisions.
 
     Args:
@@ -142,12 +142,11 @@ def _get_broad_collisions(n_cells, cell_size, max_per_cell, ids, pos):
             for real value and 0 for padding, with position corresponding to
             particle_ids.
     """
-    cell_particle_ids, grid = _build_grid(n_cells, cell_size, max_per_cell, ids, pos)
+    cell_particle_ids, grid = _build_grid(n, n_cells, cell_size, max_per_cell, ids, pos)
     neighbors, neighbor_mask = _get_neighbors(n_cells, cell_particle_ids, grid)
     return neighbors, neighbor_mask
 
 
-@jax.jit
 def _get_narrow_collisions(particle_ids, positions, neighbors, neighbor_mask):
     """Compute exact particle collisions.
 
@@ -188,7 +187,7 @@ def _get_narrow_collisions(particle_ids, positions, neighbors, neighbor_mask):
     return collisions
 
 
-def _get_collisions(n_cells, cell_size, max_per_cell, ids, pos):
+def _get_collisions(n, n_cells, cell_size, max_per_cell, ids, pos):
     """Compute particle collisions.
 
     Args:
@@ -205,19 +204,17 @@ def _get_collisions(n_cells, cell_size, max_per_cell, ids, pos):
             ids.
     """
     neighbors, neighbor_mask = _get_broad_collisions(
-        n_cells, cell_size, max_per_cell, ids, pos
+        n, n_cells, cell_size, max_per_cell, ids, pos
     )
     collisions = _get_narrow_collisions(ids, pos, neighbors, neighbor_mask)
     return neighbors, collisions
 
 
-@jax.jit
 def _dot(v1, v2):
     """Elementwise dot product."""
     return jnp.sum(v1 * v2, axis=0)
 
 
-@jax.jit
 def _get_particle_collision_response(
     positions, velocities, particle_ids, neighbors, collisions
 ):
@@ -270,7 +267,6 @@ def _get_particle_collision_response(
     return velocity_changes
 
 
-@jax.jit
 def _get_wall_collision_response(size, positions, velocities):
     """Compute wall collision resonses.
 
@@ -293,7 +289,6 @@ def _get_wall_collision_response(size, positions, velocities):
     return velocity_changes
 
 
-@jax.jit
 def _update_velocities(size, pos, vel, particle_ids, neighbors, collisions):
     """Compute collision responses and update velocities.
 
@@ -319,16 +314,16 @@ def _update_velocities(size, pos, vel, particle_ids, neighbors, collisions):
     return vel
 
 
-@jax.jit
 def _move(positions, velocities, dt):
     """Move particles."""
     positions = positions + velocities * dt
     return positions
 
 
-def _step(size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
+@partial(jax.jit, static_argnames=['n', 'size', 'n_cells', 'cell_size', 'max_per_cell'])
+def _step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
     """Take single step of the simulation."""
-    neighbors, collisions = _get_collisions(n_cells, cell_size, max_per_cell, ids, pos)
+    neighbors, collisions = _get_collisions(n, n_cells, cell_size, max_per_cell, ids, pos)
     vel = _update_velocities(size, pos, vel, ids, neighbors, collisions)
     pos = _move(pos, vel, dt)
     return pos, vel
@@ -358,7 +353,7 @@ def run(steps, n, size, n_cells, dt, seed, plot):
     all_pos = [pos]
     print("Starting simulation...")
     for _ in tqdm(range(steps)):
-        pos, vel = _step(size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt)
+        pos, vel = _step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt)
         all_pos.append(pos)
     if plot:
         graph(size, all_pos)
