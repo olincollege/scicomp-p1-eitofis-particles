@@ -1,8 +1,8 @@
 import moderngl
 import numpy as np
 import jax.numpy as jnp
-
 from PIL import Image
+from tqdm import tqdm
 
 
 def _make_program(ctx, size):
@@ -69,7 +69,7 @@ def _make_images(ctx, cbo, vao, n, size, all_pos):
     fbo.use()
 
     images = []
-    for pos in all_pos:
+    for pos in tqdm(all_pos):
         pos = jnp.transpose(pos).flatten() - (size / 2)
         cbo.write(np.array(pos).astype("f4"))
         fbo.clear(0.0, 0.0, 0.0, 1.0)
@@ -80,12 +80,14 @@ def _make_images(ctx, cbo, vao, n, size, all_pos):
 
 
 def _make_gif(images):
+    print("Encoding gif...")
     images[0].save(
         'simulation.gif',
         save_all=True,
         optimize=False,
         append_images=images[1:],
         loop=0,
+        # duration=100,
     )
 
 
