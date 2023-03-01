@@ -87,7 +87,7 @@ def _make_gif(images):
         optimize=False,
         append_images=images[1:],
         loop=0,
-        # duration=100,
+        duration=100,
     )
 
 

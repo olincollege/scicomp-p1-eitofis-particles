@@ -144,6 +144,7 @@ def _build_fig(frames, layout):
 
 
 def graph(size, all_pos):
+    print("Starting plotting...")
     frames = _build_frames(size, all_pos)
     layout = _build_layout(size, all_pos)
     fig = _build_fig(frames, layout)

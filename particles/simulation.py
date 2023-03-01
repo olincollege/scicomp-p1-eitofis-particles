@@ -236,11 +236,61 @@ def _get_particle_collision_response(
     def _map_func(particle_id, neighbors, collisions):
         particle_position = positions[:, particle_id]
         particle_velocity = velocities[:, particle_id]
+        particle_radius = 1
         particle_mass = 1
         neighbor_positions = positions[:, neighbors]
         neighbor_velocities = velocities[:, neighbors]
+        neighbor_radii = jnp.ones_like(neighbors)
         neighbor_masses = jnp.ones_like(neighbors)
 
+        p1x, p1y = particle_position[0], particle_position[1]
+        v1x, v1y = particle_velocity[0], particle_velocity[1]
+        p2x, p2y = neighbor_positions[0], neighbor_positions[1]
+        v2x, v2y = neighbor_velocities[0], neighbor_positions[1]
+        r1, r2 = particle_radius, neighbor_radii
+
+        # Un-Overlap
+        back_time_root = (
+            0.5 * jnp.sqrt(
+                4 * ((
+                    p1x * (v1x - v2x) +
+                    p2x * (-v1x + v2x) +
+                    (p1y - p2y) * (v1y - v2y)
+                ) ** 2) -
+                4 * (
+                    p1x * p1x + p1y * p1y -
+                    2 * p1x * p2x + p2x * p2x -
+                    2 * p1y * p2y + p2y * p2y -
+                    r1 * r1 -
+                    2 * r1 * r2 -
+                    r2 * r2
+                ) * (
+                    v1x * v1x + v1y * v1y -
+                    2 * v1x * v2x + v2x * v2x -
+                    2 * v1y * v2y + v2y * v2y
+                )
+            )
+        )
+        back_time_summand = (
+            p1x * v1x - p2x * v1x +
+            p1y * v1y - p2y * v1y -
+            p1x * v2x + p2x * v2x -
+            p1y * v2y + p2y * v2y
+        )
+        back_time_divisor = (
+            v1x * v1x + v1y * v1y -
+            2 * v1x * v2x + v2x * v2x -
+            2 * v1y * v2y + v2y * v2y
+        )
+        back_times = (back_time_summand + back_time_root) / back_time_divisor;
+        back_times = jnp.nan_to_num(back_times + 0.001)
+        back_times = back_times * collisions
+        back_time = jnp.max(back_times)
+
+        position_change = particle_velocity * back_time * -1
+        particle_position = particle_position + position_change
+
+        # Collision Response
         collision_normals = neighbor_positions - particle_position[:, None]
         magnitudes = jnp.linalg.norm(collision_normals, axis=0)
         collision_normals = jnp.nan_to_num(collision_normals / magnitudes)
@@ -257,14 +307,18 @@ def _get_particle_collision_response(
         velocity_changes = (impulse / particle_mass) * -1
         velocity_changes = velocity_changes * collisions
         velocity_changes = velocity_changes * collision_normals
-        velocity_changes = jnp.sum(velocity_changes, axis=-1)
-        return velocity_changes
+        velocity_change = jnp.sum(velocity_changes, axis=-1)
 
-    velocity_changes = jax.vmap(_map_func)(
+        position_change += back_time * velocity_change
+
+        return position_change, velocity_change
+
+    position_changes, velocity_changes = jax.vmap(_map_func)(
         particle_ids, neighbors, collisions
     )
+    position_changes = jnp.transpose(position_changes)
     velocity_changes = jnp.transpose(velocity_changes)
-    return velocity_changes
+    return position_changes, velocity_changes
 
 
 def _get_wall_collision_response(size, positions, velocities):
@@ -305,13 +359,14 @@ def _update_velocities(size, pos, vel, particle_ids, neighbors, collisions):
     Returns:
         vel: Array of shape (2, n), new velocity.
     """
-    velocity_changes = _get_particle_collision_response(
+    position_changes, velocity_changes = _get_particle_collision_response(
         pos, vel, particle_ids, neighbors, collisions
     )
+    pos = pos + position_changes
     vel = vel + velocity_changes
     velocity_changes = _get_wall_collision_response(size, pos, vel)
     vel = vel + velocity_changes
-    return vel
+    return pos, vel
 
 
 def _move(positions, velocities, dt):
@@ -324,7 +379,7 @@ def _move(positions, velocities, dt):
 def _step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
     """Take single step of the simulation."""
     neighbors, collisions = _get_collisions(n, n_cells, cell_size, max_per_cell, ids, pos)
-    vel = _update_velocities(size, pos, vel, ids, neighbors, collisions)
+    pos, vel = _update_velocities(size, pos, vel, ids, neighbors, collisions)
     pos = _move(pos, vel, dt)
     return pos, vel
 
