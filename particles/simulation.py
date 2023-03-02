@@ -367,5 +367,6 @@ def init_simulation(n, size, n_cells, seed):
     n_cells = n_cells + 2  # Add outer padding to grid
     min_radii = 1
     max_per_cell = int((cell_size ** 2) // (jnp.pi * min_radii ** 2) + 1) * 1
+    assert (max_per_cell * n_cells ** 2) > n, "Not enough cells!"
     ids, pos, vel, key = _init_particles(n, seed, size)
     return cell_size, n_cells, max_per_cell, ids, pos, vel, key
