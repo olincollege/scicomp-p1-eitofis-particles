@@ -1,6 +1,8 @@
 import sys
 import argparse
+from functools import partial
 
+import moderngl
 import moderngl_window as mglw
 
 from render import Renderer
@@ -53,6 +55,10 @@ def run(args):
         args.seed,
     )
     if args.headless:
+        moderngl.create_standalone_context = partial(
+            moderngl.create_standalone_context,
+            backend="egl",
+        )
         mglw.run_window_config(Renderer, args=["--window", "headless"])
     else:
         mglw.run_window_config(Renderer, args=["-r", "True"])
