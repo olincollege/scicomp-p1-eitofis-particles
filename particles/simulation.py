@@ -3,10 +3,38 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-from tqdm import tqdm
 
-from graph import graph
-from render import render
+
+def _resolve_wall_movements(size, positions):
+    """Compute wall collision resonses.
+
+    Args:
+        positions: Array of shape (2, n), particle positions.
+        velocities: Array of shape (2, n), particle velocities.
+
+    Returns:
+        velocity_changes: Array of shape (2, n), changes in particle velocity
+            with position corresponding to particle_ids.
+    """
+    position_changes_x = jnp.zeros_like(positions[0])
+    position_changes_y = jnp.zeros_like(positions[1])
+
+    oob_left_x = (positions[0, :] <= 0)
+    oob_right_x = (positions[0, :] >= size)
+    position_changes_x = (
+        ((-positions[0] + 1) * oob_left_x) +
+        ((size - positions[0] - 1) * oob_right_x)
+    )
+
+    oob_up_y = (positions[1, :] <= 0)
+    oob_down_y = (positions[1, :] >= size)
+    position_changes_y = (
+        ((-positions[1] + 1) * oob_up_y) +
+        ((size - positions[1] - 1) * oob_down_y)
+    )
+
+    position_changes = jnp.stack([position_changes_x, position_changes_y], axis=0)
+    return positions + position_changes
 
 
 def _init_particles(n, seed, size):
@@ -27,13 +55,13 @@ def _init_particles(n, seed, size):
     key, rng = jax.random.split(key)
     n_row_col = int(jnp.sqrt(n))
     x, y = jnp.meshgrid(
-        jnp.linspace(1, size - 1, n_row_col),
-        jnp.linspace(1, size - 1, n_row_col),
+        jnp.linspace(2, size - 2, n_row_col),
+        jnp.linspace(2, size - 2, n_row_col),
     )
     positions = jnp.stack((x.flatten(), y.flatten()), axis=0)
 
     _, rng = jax.random.split(key)
-    velocities = jax.random.uniform(rng, (2, n), minval=-1, maxval=1)
+    velocities = jax.random.uniform(rng, (2, n), minval=-0.5, maxval=0.5)
     return ids, positions, velocities
 
 
@@ -61,6 +89,7 @@ def _build_grid(n_particles, n_cells, cell_size, max_per_cell, ids, positions):
     def _map_func(cell_id):
         return jnp.sum(jnp.where(cell_ids == cell_id, 1, 0))
     cell_counts = jax.vmap(_map_func)(jnp.arange(n_cells ** 2))
+    print(jnp.sum(cell_counts))
     cell_missing = max_per_cell - cell_counts
 
     cell_missing_mask = jnp.zeros((cell_counts.shape[0], max_per_cell))
@@ -124,29 +153,6 @@ def _get_neighbors(n_cells, cell_particle_ids, grid):
     return neighbors, neighbors_mask
 
 
-def _get_broad_collisions(n, n_cells, cell_size, max_per_cell, ids, pos):
-    """Compute broad particle collisions.
-
-    Args:
-        n_cells: Number of uniform grid cells in each direction.
-        cell_size: Size of single uniform grid cell.
-        ids: Array of shape (n), particle ids.
-        pos: Array of shape (2, n), particle positions.
-
-    Returns:
-        particle_ids: Array of shape (n), contains particle ids no longer in
-            sorted order.
-        neighbors: Array of shape (n, max_neighbors), contains each particles
-            neighbors with position corresponding to particle_ids.
-        neighbors_mask: Array of shape (n, max_neighbors), contains mask where 1
-            for real value and 0 for padding, with position corresponding to
-            particle_ids.
-    """
-    cell_particle_ids, grid = _build_grid(n, n_cells, cell_size, max_per_cell, ids, pos)
-    neighbors, neighbor_mask = _get_neighbors(n_cells, cell_particle_ids, grid)
-    return neighbors, neighbor_mask
-
-
 def _get_narrow_collisions(particle_ids, positions, neighbors, neighbor_mask):
     """Compute exact particle collisions.
 
@@ -187,27 +193,52 @@ def _get_narrow_collisions(particle_ids, positions, neighbors, neighbor_mask):
     return collisions
 
 
-def _get_collisions(n, n_cells, cell_size, max_per_cell, ids, pos):
-    """Compute particle collisions.
+def _get_overlap_movements(positions, particle_ids, neighbors, neighbor_mask):
+    """Compute particle collision resonses.
 
     Args:
-        n_cells: Number of uniform grid cells in each direction.
-        cell_size: Size of single uniform grid cell.
-        ids: Array of shape (n), particle ids.
-        pos: Array of shape (2, n), particle positions.
+        positions: Array of shape (2, n), particle positions.
+        velocities: Array of shape (2, n), particle velocities.
+        particle_ids: Array of shape (n), particle ids.
+        neighbors: Array of shape (n, max_neighbors), contains each particles
+            neighbors with position corresponding to sorted particle_ids.
+        collisions: Array of shape(n, max_neighbors), mask that is 1 if paticles
+            collide, 0 otherwise, with position corresponding to particle_ids.
 
     Returns:
-        neighbors: Array of shape (n, max_neighbors), contains each particles
-            neighbors with position corresponding to sorted particle ids
-        collisions: Array of shape(n, max_neighbors), mask that is 1 if paticles
-            collide, 0 otherwise, with position corresponding to sorted particle
-            ids.
+        velocity_changes: Array of shape (2, n), changes in particle velocity
+            with position corresponding to particle_ids.
     """
-    neighbors, neighbor_mask = _get_broad_collisions(
-        n, n_cells, cell_size, max_per_cell, ids, pos
-    )
-    collisions = _get_narrow_collisions(ids, pos, neighbors, neighbor_mask)
-    return neighbors, collisions
+    def _map_func(particle_id, neighbors, mask):
+        particle_position = positions[:, particle_id]
+        particle_radius = 1
+        neighbor_positions = positions[:, neighbors]
+        neighbor_radii = jnp.ones_like(neighbors)
+
+        collision_normals = neighbor_positions - particle_position[:, None]
+        magnitudes = jnp.linalg.norm(collision_normals, axis=0)
+        collision_normals = jnp.nan_to_num(collision_normals / magnitudes)
+        tangent_dists = neighbor_radii + particle_radius
+        overlap_dists = jnp.clip(tangent_dists - magnitudes, a_min=0) * mask
+
+        position_changes = -(collision_normals * overlap_dists) / 2
+        # first_change = (position_changes[0] > 0).argmax()
+        # position_change = position_changes[:, first_change]
+        position_change = jnp.sum(position_changes, axis=-1)
+
+        return position_change
+
+    position_changes = jax.vmap(_map_func)(particle_ids, neighbors, neighbor_mask)
+    position_changes = jnp.transpose(position_changes)
+    return position_changes
+
+
+def _resolve_overlap_movements(pos, ids, neighbors, neighbor_mask):
+    def _body_func(_, pos):
+        position_changes = _get_overlap_movements(pos, ids, neighbors, neighbor_mask)
+        return pos + position_changes
+    pos = jax.lax.fori_loop(0, 8, _body_func, pos)
+    return pos
 
 
 def _dot(v1, v2):
@@ -236,59 +267,10 @@ def _get_particle_collision_response(
     def _map_func(particle_id, neighbors, collisions):
         particle_position = positions[:, particle_id]
         particle_velocity = velocities[:, particle_id]
-        particle_radius = 1
         particle_mass = 1
         neighbor_positions = positions[:, neighbors]
         neighbor_velocities = velocities[:, neighbors]
-        neighbor_radii = jnp.ones_like(neighbors)
         neighbor_masses = jnp.ones_like(neighbors)
-
-        p1x, p1y = particle_position[0], particle_position[1]
-        v1x, v1y = particle_velocity[0], particle_velocity[1]
-        p2x, p2y = neighbor_positions[0], neighbor_positions[1]
-        v2x, v2y = neighbor_velocities[0], neighbor_positions[1]
-        r1, r2 = particle_radius, neighbor_radii
-
-        # Un-Overlap
-        back_time_root = (
-            0.5 * jnp.sqrt(
-                4 * ((
-                    p1x * (v1x - v2x) +
-                    p2x * (-v1x + v2x) +
-                    (p1y - p2y) * (v1y - v2y)
-                ) ** 2) -
-                4 * (
-                    p1x * p1x + p1y * p1y -
-                    2 * p1x * p2x + p2x * p2x -
-                    2 * p1y * p2y + p2y * p2y -
-                    r1 * r1 -
-                    2 * r1 * r2 -
-                    r2 * r2
-                ) * (
-                    v1x * v1x + v1y * v1y -
-                    2 * v1x * v2x + v2x * v2x -
-                    2 * v1y * v2y + v2y * v2y
-                )
-            )
-        )
-        back_time_summand = (
-            p1x * v1x - p2x * v1x +
-            p1y * v1y - p2y * v1y -
-            p1x * v2x + p2x * v2x -
-            p1y * v2y + p2y * v2y
-        )
-        back_time_divisor = (
-            v1x * v1x + v1y * v1y -
-            2 * v1x * v2x + v2x * v2x -
-            2 * v1y * v2y + v2y * v2y
-        )
-        back_times = (back_time_summand + back_time_root) / back_time_divisor;
-        back_times = jnp.nan_to_num(back_times + 0.001)
-        back_times = back_times * collisions
-        back_time = jnp.max(back_times)
-
-        position_change = particle_velocity * back_time * -1
-        particle_position = particle_position + position_change
 
         # Collision Response
         collision_normals = neighbor_positions - particle_position[:, None]
@@ -309,16 +291,13 @@ def _get_particle_collision_response(
         velocity_changes = velocity_changes * collision_normals
         velocity_change = jnp.sum(velocity_changes, axis=-1)
 
-        position_change += back_time * velocity_change
+        return velocity_change
 
-        return position_change, velocity_change
-
-    position_changes, velocity_changes = jax.vmap(_map_func)(
+    velocity_changes = jax.vmap(_map_func)(
         particle_ids, neighbors, collisions
     )
-    position_changes = jnp.transpose(position_changes)
     velocity_changes = jnp.transpose(velocity_changes)
-    return position_changes, velocity_changes
+    return velocities + velocity_changes
 
 
 def _get_wall_collision_response(size, positions, velocities):
@@ -334,39 +313,23 @@ def _get_wall_collision_response(size, positions, velocities):
     """
     radii = jnp.ones(positions.shape[1])
 
-    oob_x = ((positions[0, :] - radii) <= 0) | ((positions[0, :] + radii) >= size)
-    oob_y = ((positions[1, :] - radii) <= 0) | ((positions[1, :] + radii) >= size)
-    oob = jnp.stack([oob_x, oob_y], axis=0)
+    moving_left_x = velocities[0, :] < 0
+    moving_right_x = velocities[0, :] > 0
+    oob_left_x = ((positions[0, :] - radii) <= 0)
+    oob_right_x = ((positions[0, :] + radii) >= size)
+    oob_x = (oob_left_x * moving_left_x) | (oob_right_x * moving_right_x)
 
+    moving_up_y = velocities[1, :] < 0
+    moving_down_y = velocities[1, :] > 0
+    oob_up_y = ((positions[1, :] - radii) <= 0)
+    oob_down_y = ((positions[1, :] + radii) >= size)
+    oob_y = (oob_up_y & moving_up_y) | (oob_down_y & moving_down_y)
+
+    oob = jnp.stack([oob_x, oob_y], axis=0)
     inverse_velocities = velocities * -2
     velocity_changes = inverse_velocities * oob
-    return velocity_changes
 
-
-def _update_velocities(size, pos, vel, particle_ids, neighbors, collisions):
-    """Compute collision responses and update velocities.
-
-    Args:
-        size: Size of environment in each direction.
-        pos: Array of shape (2, n), particle positions.
-        vel: Array of shape (2, n), particle velocities.
-        particle_ids: Array of shape (n), particle ids.
-        neighbors: Array of shape (n, max_neighbors), contains each particles
-            neighbors with position corresponding to sorted particle_ids.
-        collisions: Array of shape(n, max_neighbors), mask that is 1 if paticles
-            collide, 0 otherwise, with position corresponding to particle_ids.
-
-    Returns:
-        vel: Array of shape (2, n), new velocity.
-    """
-    position_changes, velocity_changes = _get_particle_collision_response(
-        pos, vel, particle_ids, neighbors, collisions
-    )
-    pos = pos + position_changes
-    vel = vel + velocity_changes
-    velocity_changes = _get_wall_collision_response(size, pos, vel)
-    vel = vel + velocity_changes
-    return pos, vel
+    return velocities + velocity_changes
 
 
 def _move(positions, velocities, dt):
@@ -376,41 +339,23 @@ def _move(positions, velocities, dt):
 
 
 @partial(jax.jit, static_argnames=['n', 'size', 'n_cells', 'cell_size', 'max_per_cell'])
-def _step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
+def step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
     """Take single step of the simulation."""
-    neighbors, collisions = _get_collisions(n, n_cells, cell_size, max_per_cell, ids, pos)
-    pos, vel = _update_velocities(size, pos, vel, ids, neighbors, collisions)
+    pos = _resolve_wall_movements(size, pos)
+    cell_particle_ids, grid = _build_grid(n, n_cells, cell_size, max_per_cell, ids, pos)
+    neighbors, neighbor_mask = _get_neighbors(n_cells, cell_particle_ids, grid)
+    pos = _resolve_overlap_movements(pos, ids, neighbors, neighbor_mask)
+    collisions = _get_narrow_collisions(ids, pos, neighbors, neighbor_mask)
+    vel = _get_particle_collision_response(pos, vel, ids, neighbors, collisions)
+    vel = _get_wall_collision_response(size, pos, vel)
     pos = _move(pos, vel, dt)
     return pos, vel
 
 
-def run(steps, n, size, n_cells, dt, seed, plot):
-    """Initialize and run the simulation.
-
-    Args:
-        steps: Number of simulation steps.
-        n: Number of particles.
-        size: Size of environment in each direction.
-        n_cells: Number of uniform grid cells in each direction.
-        dt: Timestep size.
-        seed: Random seed.
-        plot: Whether to plot or render. If True, plot.
-    """
-    n = int(jnp.sqrt(n))
-    n = n * n
-
+def init_simulation(n, size, n_cells, seed):
     cell_size = (size // n_cells) + (size % n_cells > 0)
     n_cells = n_cells + 2  # Add outer padding to grid
     min_radii = 1
     max_per_cell = int((cell_size ** 2) // (jnp.pi * min_radii ** 2) + 1) * 1
     ids, pos, vel = _init_particles(n, seed, size)
-
-    all_pos = [pos]
-    print("Starting simulation...")
-    for _ in tqdm(range(steps)):
-        pos, vel = _step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt)
-        all_pos.append(pos)
-    if plot:
-        graph(size, all_pos)
-    else:
-        render(size, all_pos)
+    return cell_size, n_cells, max_per_cell, ids, pos, vel

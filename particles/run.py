@@ -1,7 +1,9 @@
 import sys
 import argparse
 
-import simulation
+import moderngl_window as mglw
+
+from render import Renderer
 
 
 def parse_args(args):
@@ -47,15 +49,15 @@ def parse_args(args):
 
 def run(args):
     """Run simulation."""
-    return simulation.run(
-        steps=args.steps,
-        n=args.n_particles,
-        size=args.size,
-        n_cells=args.n_cells,
-        dt=args.dt,
-        seed=args.seed,
-        plot=args.graph,
+    Renderer._init_args = (
+        args.n_particles,
+        args.size,
+        args.n_cells,
+        args.dt,
+        args.seed,
+        args.graph,
     )
+    mglw.run_window_config(Renderer, args=["-r", "True"])
 
 
 def main(raw_args):

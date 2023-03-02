@@ -1,112 +1,149 @@
-import moderngl
+import time
+
+import moderngl_window as mglw
 import numpy as np
 import jax.numpy as jnp
-from PIL import Image
-from tqdm import tqdm
+
+from simulation import step, init_simulation
 
 
-def _make_program(ctx, size):
-    program = ctx.program(
-        vertex_shader='''
-            #version 330
+class Renderer(mglw.WindowConfig):
+    gl_version = (3, 3)
+    window_size = (1024, 1024)
+    aspect_ratio = 1
 
-            in vec2 in_vert;
-            in vec2 in_pos;
+    def __init__(self, **kwargs):
+        """Initialize the simulation.
 
-            uniform float scale;
+        Args:
+            n: Number of particles.
+            size: Size of environment in each direction.
+            n_cells: Number of uniform grid cells in each direction.
+            dt: Timestep size.
+            seed: Random seed.
+            plot: Whether to plot or render. If True, plot.
+        """
+        super().__init__(**kwargs)
 
-            out vec2 pos;
-            out float limit;
+        n, size, n_cells, dt, seed, plot = Renderer._init_args
+        self.n = int(jnp.sqrt(n)) ** 2
+        self.size = size
+        self.n_cells = n_cells
+        self.dt = dt
+        self.seed = seed
+        self.plot = plot
+        self._init_renderer()
+        self._init_sim()
+        self.time = time.time()
 
-            void main() {
-                gl_Position = vec4((in_vert + in_pos) / scale, 0.0, 1.0);
-                pos = in_vert;
-                limit = 1;
-            }
-        ''',
-        fragment_shader='''
-            #version 330
+    def _init_renderer(self):
+        self.program = self._make_program()
+        self.vbo, self.ibo, self.cbo, self.sbo = self._make_buffers()
+        self.vao = self.ctx.vertex_array(
+            self.program,
+            [
+                (self.vbo, '2f', 'in_vert'),
+                (self.cbo, '2f/i', 'in_pos'),
+                (self.sbo, '1f/i', 'in_vel'),
+            ],
+            index_buffer=self.ibo,
+            index_element_size=4,
+        )
 
-            in vec2 pos;
-            in float limit;
+    def _init_sim(self):
+        cell_size, n_cells, max_per_cell, ids, pos, vel = init_simulation(
+            self.n, self.size, self.n_cells, self.seed
+        )
+        self.cell_size = cell_size
+        self.n_cells = n_cells
+        self.max_per_cell = max_per_cell
+        self.ids = ids
+        self.pos = pos
+        self.vel = vel
 
-            out vec3 f_color;
+    def render(self, *_):
+        self.ctx.clear(0.0, 0.0, 0.0, 1.0)
+        self.pos, self.vel = step(
+            self.n,
+            self.size,
+            self.n_cells,
+            self.cell_size,
+            self.max_per_cell,
+            self.ids,
+            self.pos,
+            self.vel,
+            self.dt,
+        )
+        pos = jnp.transpose(self.pos).flatten() - (self.size / 2)
+        self.cbo.write(np.array(pos).astype("f4"))
+        vel = jnp.linalg.norm(self.vel, axis=0) / 3
+        self.sbo.write(np.array(vel).astype("f4"))
+        self.vao.render(instances=self.n)
 
-            void main() {
-                float rsq = dot(pos, pos);
-                if (rsq > limit)
-                    discard;
-                f_color = vec3(1.0, 1.0, 1.0);
-            }
-        ''',
-    )
-    program['scale'].value = (size / 2) + 1
-    return program
-
-
-def _make_buffers(ctx, n):
-    vertices = np.array([
-        1.0, 1.0,
-        1.0, -1.0,
-        -1.0, 1.0,
-        -1.0, -1.0,
-    ], dtype="f4")
-    vbo = ctx.buffer(vertices)
-
-    indicies = np.array([
-        0, 1, 3,
-        0, 2, 3,
-    ], dtype="i4")
-    ibo = ctx.buffer(indicies)
-
-    cbo = ctx.buffer(reserve=(n * 2 * 4))
-
-    return vbo, ibo, cbo
-
-
-def _make_images(ctx, cbo, vao, n, size, all_pos):
-    fbo = ctx.simple_framebuffer((1024, 1024))
-    fbo.use()
-
-    images = []
-    for pos in tqdm(all_pos):
-        pos = jnp.transpose(pos).flatten() - (size / 2)
-        cbo.write(np.array(pos).astype("f4"))
-        fbo.clear(0.0, 0.0, 0.0, 1.0)
-        vao.render(instances=n)
-        img = Image.frombytes('RGB', fbo.size, fbo.read(), 'raw', 'RGB', 0, -1)
-        images.append(img)
-    return images
-
-
-def _make_gif(images):
-    print("Encoding gif...")
-    images[0].save(
-        'simulation.gif',
-        save_all=True,
-        optimize=False,
-        append_images=images[1:],
-        loop=0,
-        duration=100,
-    )
+        current_time = time.time()
+        print(f"FPS: {1 / (current_time - self.time)}")
+        self.time = current_time
 
 
-def render(size, all_pos):
-    print("Starting render...")
-    n = len(all_pos[0][0])
+    def _make_program(self):
+        program = self.ctx.program(
+            vertex_shader="""
+                #version 330
 
-    ctx = moderngl.create_standalone_context()
-    program = _make_program(ctx, size)
-    vbo, ibo, cbo = _make_buffers(ctx, n)
-    vao = ctx.vertex_array(
-        program,
-        [
-            (vbo, '2f', 'in_vert'),
-            (cbo, '2f/i', 'in_pos'),
-        ],
-        index_buffer=ibo,
-        index_element_size=4,
-    )
+                in vec2 in_vert;
+                in vec2 in_pos;
+                in float in_vel;
 
-    images = _make_images(ctx, cbo, vao, n, size, all_pos)
-    _make_gif(images)
+                uniform float scale;
+
+                out vec2 pos;
+                out float vel;
+                out float limit;
+
+                void main() {
+                    gl_Position = vec4((in_vert + in_pos) / scale, 0.0, 1.0);
+                    pos = in_vert;
+                    vel = in_vel;
+                    limit = 1;
+                }
+            """,
+            fragment_shader="""
+                #version 330
+
+                in vec2 pos;
+                in float vel;
+                in float limit;
+
+                out vec3 f_color;
+
+                void main() {
+                    float rsq = dot(pos, pos);
+                    if (rsq > limit)
+                        discard;
+                    float _vel = clamp(vel, 0.0, 1);
+                    f_color = vec3(_vel, 0.0, 1 - _vel);
+                }
+            """,
+        )
+        program["scale"].value = (self.size / 2) + 1
+        return program
+
+    def _make_buffers(self):
+        vertices = np.array([
+            1.0, 1.0,
+            1.0, -1.0,
+            -1.0, 1.0,
+            -1.0, -1.0,
+        ], dtype="f4")
+        vbo = self.ctx.buffer(vertices)
+
+        indicies = np.array([
+            0, 1, 3,
+            0, 2, 3,
+        ], dtype="i4")
+        ibo = self.ctx.buffer(indicies)
+
+        cbo = self.ctx.buffer(reserve=(self.n * 2 * 4))
+        sbo = self.ctx.buffer(reserve=(self.n * 4))
+
+        return vbo, ibo, cbo, sbo
