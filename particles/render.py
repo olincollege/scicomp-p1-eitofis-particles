@@ -25,13 +25,12 @@ class Renderer(mglw.WindowConfig):
         """
         super().__init__(**kwargs)
 
-        n, size, n_cells, dt, seed, plot = Renderer._init_args
+        n, size, n_cells, dt, seed = Renderer._init_args
         self.n = int(jnp.sqrt(n)) ** 2
         self.size = size
         self.n_cells = n_cells
         self.dt = dt
         self.seed = seed
-        self.plot = plot
         self._init_renderer()
         self._init_sim()
         self.time = time.time()

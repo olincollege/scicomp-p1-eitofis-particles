@@ -35,12 +35,8 @@ def parse_args(args):
         help="Random seed."
     )
     parser.add_argument(
-        '--graph', action='store_true', default=False,
-        help=(
-            "Produce an interactive graph instead of rendering a gif. "
-            "NOTE: Significantly less performant - will fail to plot "
-            "for larger numbers of particles"
-        )
+        '--headless', action='store_true', default=False,
+        help="Run simulation in headless mode."
     )
 
     args = parser.parse_args(args)
@@ -55,9 +51,11 @@ def run(args):
         args.n_cells,
         args.dt,
         args.seed,
-        args.graph,
     )
-    mglw.run_window_config(Renderer, args=["-r", "True"])
+    if args.headless:
+        mglw.run_window_config(Renderer, args=["--window", "headless"])
+    else:
+        mglw.run_window_config(Renderer, args=["-r", "True"])
 
 
 def main(raw_args):
