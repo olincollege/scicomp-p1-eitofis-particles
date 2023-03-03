@@ -11,6 +11,7 @@ from simulation import step, init_simulation
 
 
 class Renderer(mglw.WindowConfig):
+    """Realtime simulation renderer."""
     gl_version = (3, 3)
     window_size = (1024, 1024)
     aspect_ratio = 1
@@ -19,12 +20,16 @@ class Renderer(mglw.WindowConfig):
         """Initialize the simulation.
 
         Args:
+            steps: Number of steps to run. If unspecified, run forever.
             n: Number of particles.
             size: Size of environment in each direction.
             n_cells: Number of uniform grid cells in each direction.
             dt: Timestep size.
             seed: Random seed.
-            plot: Whether to plot or render. If True, plot.
+            max_per_cell: Amount to increase max_per_cell by.
+            save: Output filename to save video to. Steps must also be
+                specified. NOTE: Realtime rendering will not work when a video
+                is being rendered.
         """
         super().__init__(**kwargs)
 
@@ -46,6 +51,7 @@ class Renderer(mglw.WindowConfig):
 
 
     def _init_renderer(self):
+        """Initialize rendering objects."""
         self.program = self._make_program()
         self.vbo, self.ibo, self.cbo, self.sbo = self._make_buffers()
         self.vao = self.ctx.vertex_array(
@@ -60,6 +66,7 @@ class Renderer(mglw.WindowConfig):
         )
 
     def _init_sim(self):
+        """Initialize simulation."""
         cell_size, n_cells, max_per_cell, ids, pos, vel = init_simulation(
             self.n, self.size, self.n_cells, self.seed, self.max_per_cell
         )
@@ -72,6 +79,7 @@ class Renderer(mglw.WindowConfig):
         self.initial_pos = pos
 
     def _init_video_writer(self):
+        """Initialize video writer."""
         if self.save is None:
             self.fbo = self.wnd.fbo
             self.vw = None
@@ -85,6 +93,7 @@ class Renderer(mglw.WindowConfig):
         self.fbo = self.ctx.simple_framebuffer(self.window_size)
 
     def _render(self):
+        """Simulation render step."""
         self.ctx.clear(0.0, 0.0, 0.0, 1.0)
         self.pos, self.vel = step(
             self.n,
@@ -105,6 +114,7 @@ class Renderer(mglw.WindowConfig):
         return pos, vel
 
     def render(self, *_):
+        """Overall render step."""
         if self.step == 0:
             print("\nRunning simulation...")
             self.pbar = tqdm(total=self.steps)
