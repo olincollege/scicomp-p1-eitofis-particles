@@ -6,3 +6,5 @@ jaxlib==0.4.4
 plotly==5.13
 moderngl==5.8
 moderngl-window==2.4
+tqdm==4.64
+opencv-python==4.7
