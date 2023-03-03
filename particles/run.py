@@ -37,6 +37,16 @@ def parse_args(args):
         help="Random seed."
     )
     parser.add_argument(
+        "--max-per-cell", type=int, default=10,
+        help=(
+            "Number to add to default max per cell calculation. "
+            "Collisions allow for greater than expected number of"
+            " particles in each cell. Manually tune if simulation "
+            "showing 'exploding' behavior. Generally needs to be "
+            " increased."
+        )
+    )
+    parser.add_argument(
         '--headless', action='store_true', default=False,
         help="Run simulation in headless mode."
     )
@@ -63,6 +73,7 @@ def run(args):
         args.dt,
         args.seed,
         args.save,
+        args.max_per_cell,
     )
     if args.headless:
         moderngl.create_standalone_context = partial(

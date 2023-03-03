@@ -28,13 +28,14 @@ class Renderer(mglw.WindowConfig):
         """
         super().__init__(**kwargs)
 
-        steps, n, size, n_cells, dt, seed, save  = Renderer._init_args
+        steps, n, size, n_cells, dt, seed, save, mps = Renderer._init_args
         self.steps = steps
         self.n = int(jnp.sqrt(n)) ** 2
         self.size = size
         self.n_cells = n_cells
         self.dt = dt
         self.seed = seed
+        self.max_per_cell = mps
         self.save = save
 
         self._init_renderer()
@@ -60,7 +61,7 @@ class Renderer(mglw.WindowConfig):
 
     def _init_sim(self):
         cell_size, n_cells, max_per_cell, ids, pos, vel = init_simulation(
-            self.n, self.size, self.n_cells, self.seed
+            self.n, self.size, self.n_cells, self.seed, self.max_per_cell
         )
         self.cell_size = cell_size
         self.n_cells = n_cells

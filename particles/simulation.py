@@ -369,12 +369,13 @@ def step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
     return pos, vel
 
 
-def init_simulation(n, size, n_cells, seed):
+def init_simulation(n, size, n_cells, seed, max_per_cell_add):
     # jax.config.update("jax_enable_x64", True)
     cell_size = (size // n_cells) + (size % n_cells > 0)
     n_cells = n_cells + 2  # Add outer padding to grid
     min_radii = 1
-    max_per_cell = int((cell_size ** 2) // (jnp.pi * min_radii ** 2) + 1) * 4
+    max_per_cell = int((cell_size ** 2) // (jnp.pi * min_radii ** 2) + 1)
+    max_per_cell += max_per_cell_add
     assert (max_per_cell * n_cells ** 2) > n, "Not area to fit particles!"
     ids, pos, vel = _init_particles(n, seed, size)
     return cell_size, n_cells, max_per_cell, ids, pos, vel
