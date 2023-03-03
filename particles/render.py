@@ -68,6 +68,7 @@ class Renderer(mglw.WindowConfig):
         self.ids = ids
         self.pos = pos
         self.vel = vel
+        self.initial_pos = pos
 
     def _init_video_writer(self):
         if self.save is None:
@@ -100,6 +101,7 @@ class Renderer(mglw.WindowConfig):
         vel = jnp.linalg.norm(self.vel, axis=0) / 1
         self.sbo.write(np.array(vel).astype("f4"))
         self.vao.render(instances=self.n)
+        return pos, vel
 
     def render(self, *_):
         if self.step == 0:
@@ -109,7 +111,9 @@ class Renderer(mglw.WindowConfig):
         if self.vw:
             self.fbo.use()
 
-        self._render()
+        pos, vel = self._render()
+
+        # print(f"Total velocity: {jnp.sum(jnp.linalg.norm(vel))}")
 
         if self.vw is not None:
             raw = self.fbo.read()
@@ -128,8 +132,6 @@ class Renderer(mglw.WindowConfig):
 
         self.step += 1
         self.pbar.update(1)
-
-
 
     def _make_program(self):
         program = self.ctx.program(

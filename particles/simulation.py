@@ -266,12 +266,19 @@ def _get_particle_collision_response(
         velocity_changes: Array of shape (2, n), changes in particle velocity
             with position corresponding to particle_ids.
     """
+    total_collisions = jnp.clip(jnp.sum(collisions, axis=-1), 1, None)
+
     def _map_func(particle_id, neighbors, collisions):
         particle_position = positions[:, particle_id]
         particle_velocity = velocities[:, particle_id]
+        particle_total_collisions = total_collisions[particle_id]
+        particle_velocity = particle_velocity / particle_total_collisions
         particle_mass = 1
+
         neighbor_positions = positions[:, neighbors]
         neighbor_velocities = velocities[:, neighbors]
+        neighbor_total_collisions = total_collisions[neighbors]
+        neighbor_velocities = neighbor_velocities / neighbor_total_collisions
         neighbor_masses = jnp.ones_like(neighbors)
 
         # Collision Response
@@ -291,7 +298,7 @@ def _get_particle_collision_response(
         velocity_changes = (impulse / particle_mass) * -1
         velocity_changes = velocity_changes * collisions
         velocity_changes = velocity_changes * collision_normals
-        velocity_change = jnp.sum(velocity_changes, axis=-1)
+        velocity_change = jnp.sum(velocity_changes, axis=-1, where=collisions)
 
         return velocity_change
 
@@ -299,7 +306,15 @@ def _get_particle_collision_response(
         particle_ids, neighbors, collisions
     )
     velocity_changes = jnp.transpose(velocity_changes)
-    return velocities + velocity_changes
+    new_velocities = velocities + velocity_changes
+
+    diff = (
+        jnp.sum(jnp.linalg.norm(velocities)) /
+        jnp.sum(jnp.linalg.norm(new_velocities))
+    )
+    new_velocities = new_velocities * diff
+
+    return new_velocities
 
 
 def _get_wall_collision_response(size, positions, velocities):
@@ -343,14 +358,14 @@ def _move(positions, velocities, dt):
 @partial(jax.jit, static_argnames=['n', 'size', 'n_cells', 'cell_size', 'max_per_cell'])
 def step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
     """Take single step of the simulation."""
-    pos = _resolve_wall_movements(size, pos)
     cell_particle_ids, grid = _build_grid(n, n_cells, cell_size, max_per_cell, ids, pos)
     neighbors, neighbor_mask = _get_neighbors(n_cells, cell_particle_ids, grid)
-    pos = _resolve_overlap_movements(pos, ids, neighbors, neighbor_mask)
     collisions = _get_narrow_collisions(ids, pos, neighbors, neighbor_mask)
     vel = _get_particle_collision_response(pos, vel, ids, neighbors, collisions)
     vel = _get_wall_collision_response(size, pos, vel)
     pos = _move(pos, vel, dt)
+    pos = _resolve_overlap_movements(pos, ids, neighbors, neighbor_mask)
+    pos = _resolve_wall_movements(size, pos)
     return pos, vel
 
 
@@ -359,7 +374,7 @@ def init_simulation(n, size, n_cells, seed):
     cell_size = (size // n_cells) + (size % n_cells > 0)
     n_cells = n_cells + 2  # Add outer padding to grid
     min_radii = 1
-    max_per_cell = int((cell_size ** 2) // (jnp.pi * min_radii ** 2) + 1) * 1
+    max_per_cell = int((cell_size ** 2) // (jnp.pi * min_radii ** 2) + 1) * 4
     assert (max_per_cell * n_cells ** 2) > n, "Not area to fit particles!"
     ids, pos, vel = _init_particles(n, seed, size)
     return cell_size, n_cells, max_per_cell, ids, pos, vel
