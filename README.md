@@ -57,3 +57,11 @@ Broadly, the simulation flow is as such:
 ### Overall
 
 Outside of the simulation, there are several other constructs. The `run` file handles parsing arguments and starting the simulation, the `render` file defines the `Renderer` class that runs the simulation and does real-time rendering, and the `simulation` file holds the simulation logic.
+
+## Results
+
+The simulation is able to run efficiently, rendering up to 1 million paticles at ~0.5 frames per second. The dynamics also perform semi-realistically - collisions behave as expected, and clustering behavior as well as the beginning of crystallization can be observed. The dynamics seem to break down when particles are begin pressed against the boundary of the simulation, and large clumps of particles start to congregate.
+
+![results](assets/shifts.png)
+
+The log-log graph of particle shift from their original positions has a slope significantly higher than 1. This indicates that the dynamics aren't quite right - we would expect the slope of the graph to be ~1 for non-glass liquids. 
