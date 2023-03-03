@@ -1,6 +1,6 @@
 # Particle Simulation
 
-![paticle sim](assets/10000.mp4)
+https://user-images.githubusercontent.com/26287286/222632792-91d1d23a-1308-4cad-b08c-5581b38f6ed4.mp4
 
 ## Overview
 
