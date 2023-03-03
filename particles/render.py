@@ -50,7 +50,7 @@ class Renderer(mglw.WindowConfig):
         )
 
     def _init_sim(self):
-        cell_size, n_cells, max_per_cell, ids, pos, vel, key = init_simulation(
+        cell_size, n_cells, max_per_cell, ids, pos, vel = init_simulation(
             self.n, self.size, self.n_cells, self.seed
         )
         self.cell_size = cell_size
@@ -59,11 +59,10 @@ class Renderer(mglw.WindowConfig):
         self.ids = ids
         self.pos = pos
         self.vel = vel
-        self.key = key
 
     def render(self, *_):
         self.ctx.clear(0.0, 0.0, 0.0, 1.0)
-        self.pos, self.vel, self.key = step(
+        self.pos, self.vel = step(
             self.n,
             self.size,
             self.n_cells,
@@ -73,11 +72,10 @@ class Renderer(mglw.WindowConfig):
             self.pos,
             self.vel,
             self.dt,
-            self.key,
         )
         pos = jnp.transpose(self.pos).flatten() - (self.size / 2)
         self.cbo.write(np.array(pos).astype("f4"))
-        vel = jnp.linalg.norm(self.vel, axis=0) / 3
+        vel = jnp.linalg.norm(self.vel, axis=0) / 1
         self.sbo.write(np.array(vel).astype("f4"))
         self.vao.render(instances=self.n)
 

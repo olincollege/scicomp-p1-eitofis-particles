@@ -1,4 +1,3 @@
-import time
 from functools import partial
 
 import jax
@@ -52,7 +51,7 @@ def _init_particles(n, seed, size):
     """
     ids = jnp.arange(0, n)
     key = jax.random.PRNGKey(seed)
-    key, rng = jax.random.split(key)
+    _, rng = jax.random.split(key)
     n_row_col = int(jnp.sqrt(n))
     x, y = jnp.meshgrid(
         jnp.linspace(2, size - 2, n_row_col),
@@ -61,8 +60,12 @@ def _init_particles(n, seed, size):
     positions = jnp.stack((x.flatten(), y.flatten()), axis=0)
 
     key, rng = jax.random.split(key)
-    velocities = jax.random.uniform(rng, (2, n), minval=-0, maxval=0)
-    return ids, positions, velocities, key
+    # velocities = jax.random.uniform(rng, (2, n), minval=-1, maxval=0)
+    # j velocities = jax.random.uniform(rng, (2, n), minval=-0, maxval=0)
+    sigma = 0.3
+    mu = 0
+    velocities = jax.random.normal(rng, (2, n)) * sigma + mu
+    return ids, positions, velocities
 
 
 def _build_grid(n_particles, n_cells, cell_size, max_per_cell, ids, positions):
@@ -331,15 +334,6 @@ def _get_wall_collision_response(size, positions, velocities):
     return velocities + velocity_changes
 
 
-def _get_brownian_motion(velocities, key):
-    key, rng = jax.random.split(key)
-    sigma = 0.25
-    mu = 0
-    velocity_changes = jax.random.normal(rng, velocities.shape)
-    velocity_changes = velocity_changes * sigma + mu
-    return velocities + velocity_changes, key
-
-
 def _move(positions, velocities, dt):
     """Move particles."""
     positions = positions + velocities * dt
@@ -347,7 +341,7 @@ def _move(positions, velocities, dt):
 
 
 @partial(jax.jit, static_argnames=['n', 'size', 'n_cells', 'cell_size', 'max_per_cell'])
-def step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt, key):
+def step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
     """Take single step of the simulation."""
     pos = _resolve_wall_movements(size, pos)
     cell_particle_ids, grid = _build_grid(n, n_cells, cell_size, max_per_cell, ids, pos)
@@ -356,17 +350,16 @@ def step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt, key):
     collisions = _get_narrow_collisions(ids, pos, neighbors, neighbor_mask)
     vel = _get_particle_collision_response(pos, vel, ids, neighbors, collisions)
     vel = _get_wall_collision_response(size, pos, vel)
-    vel, key = _get_brownian_motion(vel, key)
-    vel = vel * 0.9
     pos = _move(pos, vel, dt)
-    return pos, vel, key
+    return pos, vel
 
 
 def init_simulation(n, size, n_cells, seed):
+    # jax.config.update("jax_enable_x64", True)
     cell_size = (size // n_cells) + (size % n_cells > 0)
     n_cells = n_cells + 2  # Add outer padding to grid
     min_radii = 1
     max_per_cell = int((cell_size ** 2) // (jnp.pi * min_radii ** 2) + 1) * 1
-    assert (max_per_cell * n_cells ** 2) > n, "Not enough cells!"
-    ids, pos, vel, key = _init_particles(n, seed, size)
-    return cell_size, n_cells, max_per_cell, ids, pos, vel, key
+    assert (max_per_cell * n_cells ** 2) > n, "Not area to fit particles!"
+    ids, pos, vel = _init_particles(n, seed, size)
+    return cell_size, n_cells, max_per_cell, ids, pos, vel
