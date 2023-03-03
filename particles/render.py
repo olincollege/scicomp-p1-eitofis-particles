@@ -6,6 +6,8 @@ import jax.numpy as jnp
 from tqdm import tqdm
 import cv2
 from PIL import Image
+import matplotlib
+import matplotlib.pyplot as plt
 
 from simulation import step, init_simulation
 
@@ -49,6 +51,7 @@ class Renderer(mglw.WindowConfig):
 
         self.step = 0
 
+        os.makedirs("data", exist_ok=True)
 
     def _init_renderer(self):
         """Initialize rendering objects."""
@@ -77,6 +80,7 @@ class Renderer(mglw.WindowConfig):
         self.pos = pos
         self.vel = vel
         self.initial_pos = pos
+        self.shifts = []
 
     def _init_video_writer(self):
         """Initialize video writer."""
@@ -85,7 +89,6 @@ class Renderer(mglw.WindowConfig):
             self.vw = None
             return
         assert self.steps is not None, "Cannot save video without steps specified!"
-        os.makedirs("data", exist_ok=True)
         fp = os.path.join("data", self.save)
         fps = 60.0
         fourcc = cv2.VideoWriter_fourcc("m", "p", "4", "v")
@@ -111,7 +114,15 @@ class Renderer(mglw.WindowConfig):
         vel = jnp.linalg.norm(self.vel, axis=0) / 1
         self.sbo.write(np.array(vel).astype("f4"))
         self.vao.render(instances=self.n)
-        return pos, vel
+
+    def _graph(self):
+        """Generate benchmark graphs."""
+        plt.figure(figsize = (10,10))
+        plt.plot(self.shifts)
+        plt.yscale("log")
+        plt.xscale("log")
+        fn = os.path.join("data", "shifts")
+        plt.savefig(fn)
 
     def render(self, *_):
         """Overall render step."""
@@ -122,8 +133,10 @@ class Renderer(mglw.WindowConfig):
         if self.vw:
             self.fbo.use()
 
-        pos, vel = self._render()
+        self._render()
 
+        shift = jnp.sum((self.pos - self.initial_pos) ** 2)
+        self.shifts.append(shift)
         # print(f"Total velocity: {jnp.sum(jnp.linalg.norm(vel))}")
 
         if self.vw is not None:
@@ -135,6 +148,7 @@ class Renderer(mglw.WindowConfig):
 
         if self.steps is not None:
             if self.step >= self.steps:
+                self._graph()
                 if self.vw is not None:
                     self.vw.release()
                 self.pbar.close()
