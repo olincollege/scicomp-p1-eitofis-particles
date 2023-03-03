@@ -48,6 +48,9 @@ The simulation is able to run efficiently, rendering up to 1 million paticles at
 
 The log-log graph of particle shift from their original positions has a slope significantly higher than 1. This indicates that the dynamics aren't quite right - we would expect the slope of the graph to be ~1 for non-glass liquids. 
 
+![velocities](assets/velocities.png)
+
+The sum of magnitudes of velocities, on the other hand, is slightly more promising. While the overall value does shift, some degree of inaccuracy is expected from floating point error. More encouraginly, there is no clear pattern to this shifts, and the deviation is not too great.
 
 ## Architecture
 
