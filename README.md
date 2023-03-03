@@ -1,5 +1,7 @@
 # Particle Simulation
 
+![paticle sim](assets/10000.mp4)
+
 ## Overview
 
 This project is for the Scientific Computing class at Olin College of Engineering. The goal for this project was to implement the simulation such that it could be GPU accelerated - as such, it is written entirely in JAX. Rendering of the results can be done in OpenGL or Plotly.
