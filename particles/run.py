@@ -40,6 +40,14 @@ def parse_args(args):
         '--headless', action='store_true', default=False,
         help="Run simulation in headless mode."
     )
+    parser.add_argument(
+        '--save', type=str, default=None,
+        help=(
+            "Filename to save video to. Requires steps to be specified."
+            " NOTE: When save is specified, no real-time output will be "
+            "drawn."
+        )
+    )
 
     args = parser.parse_args(args)
     return args
@@ -54,6 +62,7 @@ def run(args):
         args.n_cells,
         args.dt,
         args.seed,
+        args.save,
     )
     if args.headless:
         moderngl.create_standalone_context = partial(

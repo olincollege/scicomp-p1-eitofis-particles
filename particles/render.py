@@ -1,7 +1,11 @@
+import os
+
 import moderngl_window as mglw
 import numpy as np
 import jax.numpy as jnp
 from tqdm import tqdm
+import cv2
+from PIL import Image
 
 from simulation import step, init_simulation
 
@@ -24,17 +28,21 @@ class Renderer(mglw.WindowConfig):
         """
         super().__init__(**kwargs)
 
-        steps, n, size, n_cells, dt, seed = Renderer._init_args
+        steps, n, size, n_cells, dt, seed, save  = Renderer._init_args
         self.steps = steps
         self.n = int(jnp.sqrt(n)) ** 2
         self.size = size
         self.n_cells = n_cells
         self.dt = dt
         self.seed = seed
+        self.save = save
+
         self._init_renderer()
         self._init_sim()
+        self._init_video_writer()
 
         self.step = 0
+
 
     def _init_renderer(self):
         self.program = self._make_program()
@@ -61,11 +69,20 @@ class Renderer(mglw.WindowConfig):
         self.pos = pos
         self.vel = vel
 
-    def render(self, *_):
-        if self.step == 0:
-            print("\nRunning simulation...")
-            self.pbar = tqdm(total=self.steps)
+    def _init_video_writer(self):
+        if self.save is None:
+            self.fbo = self.wnd.fbo
+            self.vw = None
+            return
+        assert self.steps is not None, "Cannot save video without steps specified!"
+        os.makedirs("data", exist_ok=True)
+        fp = os.path.join("data", self.save)
+        fps = 60.0
+        fourcc = cv2.VideoWriter_fourcc("m", "p", "4", "v")
+        self.vw = cv2.VideoWriter(fp, fourcc, fps, self.window_size)
+        self.fbo = self.ctx.simple_framebuffer(self.window_size)
 
+    def _render(self):
         self.ctx.clear(0.0, 0.0, 0.0, 1.0)
         self.pos, self.vel = step(
             self.n,
@@ -84,11 +101,31 @@ class Renderer(mglw.WindowConfig):
         self.sbo.write(np.array(vel).astype("f4"))
         self.vao.render(instances=self.n)
 
+    def render(self, *_):
+        if self.step == 0:
+            print("\nRunning simulation...")
+            self.pbar = tqdm(total=self.steps)
+
+        if self.vw:
+            self.fbo.use()
+
+        self._render()
+
+        if self.vw is not None:
+            raw = self.fbo.read()
+            img = Image.frombytes(
+                'RGB', self.fbo.size, raw, 'raw', 'RGB'
+            )
+            self.vw.write(cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR))
+
         if self.steps is not None:
             if self.step >= self.steps:
+                if self.vw is not None:
+                    self.vw.release()
                 self.pbar.close()
                 self.wnd.destroy()
                 exit()
+
         self.step += 1
         self.pbar.update(1)
 
