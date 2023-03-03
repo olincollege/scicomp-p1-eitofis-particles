@@ -4,45 +4,13 @@ import jax
 import jax.numpy as jnp
 
 
-def _resolve_wall_movements(size, positions):
-    """Compute wall collision resonses.
-
-    Args:
-        positions: Array of shape (2, n), particle positions.
-        velocities: Array of shape (2, n), particle velocities.
-
-    Returns:
-        velocity_changes: Array of shape (2, n), changes in particle velocity
-            with position corresponding to particle_ids.
-    """
-    position_changes_x = jnp.zeros_like(positions[0])
-    position_changes_y = jnp.zeros_like(positions[1])
-
-    oob_left_x = (positions[0, :] <= 0)
-    oob_right_x = (positions[0, :] >= size)
-    position_changes_x = (
-        ((-positions[0] + 1) * oob_left_x) +
-        ((size - positions[0] - 1) * oob_right_x)
-    )
-
-    oob_up_y = (positions[1, :] <= 0)
-    oob_down_y = (positions[1, :] >= size)
-    position_changes_y = (
-        ((-positions[1] + 1) * oob_up_y) +
-        ((size - positions[1] - 1) * oob_down_y)
-    )
-
-    position_changes = jnp.stack([position_changes_x, position_changes_y], axis=0)
-    return positions + position_changes
-
-
 def _init_particles(n, seed, size):
     """Initialize particle positions and velocities.
 
     Args:
         n: Number of particles.
-        size: Size of environment in each direction.
         seed: Random seed.
+        size: Size of environment in each direction.
 
     Returns:
         ids: Array of shape (n), all particle ids.
@@ -60,8 +28,6 @@ def _init_particles(n, seed, size):
     positions = jnp.stack((x.flatten(), y.flatten()), axis=0)
 
     key, rng = jax.random.split(key)
-    # velocities = jax.random.uniform(rng, (2, n), minval=-1, maxval=0)
-    # j velocities = jax.random.uniform(rng, (2, n), minval=-0, maxval=0)
     sigma = 0.3
     mu = 0
     velocities = jax.random.normal(rng, (2, n)) * sigma + mu
@@ -72,18 +38,20 @@ def _build_grid(n_particles, n_cells, cell_size, max_per_cell, ids, positions):
     """Construct uniform grid.
 
     Args:
-        n_cells: Number of uniform grid cells in each direction.
-        cell_size: Size of single uniform grid cell.
-        ids: Array of shape (n), particle ids.
-        positions: Array of shape (2, n), particle positions.
+        n_particles: Number of particles.
+        n_cells: Number of cells of uniform grid in either direction.
+        cell_size: Size of a single uniform grid cell.
+        max_per_cell: Maximium number of particles expected in single cell.
+        ids: Array of shape (n), all particle ids.
+        positions: Array of shape (2, n), all particle positions.
 
     Returns:
-        cell_particle_ids: Array of shape(2, n), mapping of uniform grid cell id
-            to particle id. Sorted by cell id.
-        grid_starts: Array of shape (n_cells), for each cell contains the first
-            index in which the cell appears in cell_particle_ids.
-        grid_ends: Array of shape (n_cells), for each cell contains the last + 1
-            index in which the cell appears in cell_particle_ids.
+        cell_particle_ids: Array of shape (2, n), mapping of uniform grid cell id
+            to particle id, where [0, :] is cell id and [1, :] is particle id.
+            Sorted by particle id.
+        grid: Array of shape (n_cells ** 2, max_per_cell), mapping each grid
+            cell to the particle ids of particles contained within. Padded with
+            particle ids of `-1` to fill empty cells / space.
     """
     grid_positions = (positions // cell_size).astype(jnp.int32) + 1
     cell_ids = grid_positions[0] + grid_positions[1] * n_cells
@@ -122,20 +90,20 @@ def _get_neighbors(n_cells, cell_particle_ids, grid):
     """Gather neighbors from uniform grid.
 
     Args:
-        n_cells: Number of uniform grid cells in each direction.
-        cell_particle_ids: Array of shape(2, n), mapping of uniform grid cell id
-            to particle id. Sorted by cell id.
-        grid_starts: Array of shape (n_cells), for each cell contains the first
-            index in which the cell appears in cell_particle_ids.
-        grid_ends: Array of shape (n_cells), for each cell contains the last + 1
-            index in which the cell appears in cell_particle_ids.
+        n_cells: Number of cells of uniform grid in either direction.
+        cell_particle_ids: Array of shape (2, n), mapping of uniform grid cell id
+            to particle id, where [0, :] is cell id and [1, :] is particle id.
+            Sorted by particle id.
+        grid: Array of shape (n_cells ** 2, max_per_cell), mapping each grid
+            cell to the particle ids of particles contained within. Padded with
+            particle ids of `-1` to fill empty cells / space.
 
     Returns:
-        neighbors: Array of shape (n, max_neighbors), contains each particles
+        neighbors: Array of shape (n, max_per_cell * 9), contains each particles
             neighbors with position corresponding to cell_particle_ids.
-        neighbors_mask: Array of shape (n, max_neighbors), contains mask where 1
-            for real value and 0 for padding, with position corresponding to
-            cell_particle_ids
+        neighbors_mask: Array of shape (n, max_per_cell * 9), contains mask
+            where 1 for real value and 0 for padding, with position
+            corresponding to cell_particle_ids
     """
     def _map_func(cell_id):
         neighbor_cells = jnp.concatenate((
@@ -159,17 +127,16 @@ def _get_narrow_collisions(particle_ids, positions, neighbors, neighbor_mask):
     """Compute exact particle collisions.
 
     Args:
+        particle_ids: Array of shape (n), contains particle ids in sorted order.
         positions: Array of shape (2, n), particle positions.
-        particle_ids: Array of shape (n), contains particle ids no longer in
-            sorted order.
-        neighbors: Array of shape (n, max_neighbors), contains each particles
+        neighbors: Array of shape (n, max_per_cell * 9), contains each particles
             neighbors with position corresponding to particle_ids.
-        neighbors_mask: Array of shape (n, max_neighbors), contains mask where 1
+        neighbors_mask: Array of shape (n, max_per_cell * 9), contains mask where 1
             for real value and 0 for padding, with position corresponding to
             particle_ids.
 
     Returns:
-        collisions: Array of shape(n, max_neighbors), mask that is 1 if paticles
+        collisions: Array of shape(n, max_per_cell * 9), mask that is 1 if paticles
             collide, 0 otherwise, with position corresponding to particle_ids
     """
     def _map_func(particle_id, neighbors, mask):
@@ -195,54 +162,6 @@ def _get_narrow_collisions(particle_ids, positions, neighbors, neighbor_mask):
     return collisions
 
 
-def _get_overlap_movements(positions, particle_ids, neighbors, neighbor_mask):
-    """Compute particle collision resonses.
-
-    Args:
-        positions: Array of shape (2, n), particle positions.
-        velocities: Array of shape (2, n), particle velocities.
-        particle_ids: Array of shape (n), particle ids.
-        neighbors: Array of shape (n, max_neighbors), contains each particles
-            neighbors with position corresponding to sorted particle_ids.
-        collisions: Array of shape(n, max_neighbors), mask that is 1 if paticles
-            collide, 0 otherwise, with position corresponding to particle_ids.
-
-    Returns:
-        velocity_changes: Array of shape (2, n), changes in particle velocity
-            with position corresponding to particle_ids.
-    """
-    def _map_func(particle_id, neighbors, mask):
-        particle_position = positions[:, particle_id]
-        particle_radius = 1
-        neighbor_positions = positions[:, neighbors]
-        neighbor_radii = jnp.ones_like(neighbors)
-
-        collision_normals = neighbor_positions - particle_position[:, None]
-        magnitudes = jnp.linalg.norm(collision_normals, axis=0)
-        collision_normals = jnp.nan_to_num(collision_normals / magnitudes)
-        tangent_dists = neighbor_radii + particle_radius
-        overlap_dists = jnp.clip(tangent_dists - magnitudes, a_min=0) * mask
-
-        position_changes = -(collision_normals * overlap_dists) / 2
-        # first_change = (position_changes[0] > 0).argmax()
-        # position_change = position_changes[:, first_change]
-        position_change = jnp.sum(position_changes, axis=-1)
-
-        return position_change
-
-    position_changes = jax.vmap(_map_func)(particle_ids, neighbors, neighbor_mask)
-    position_changes = jnp.transpose(position_changes)
-    return position_changes
-
-
-def _resolve_overlap_movements(pos, ids, neighbors, neighbor_mask):
-    def _body_func(_, pos):
-        position_changes = _get_overlap_movements(pos, ids, neighbors, neighbor_mask)
-        return pos + position_changes
-    pos = jax.lax.fori_loop(0, 8, _body_func, pos)
-    return pos
-
-
 def _dot(v1, v2):
     """Elementwise dot product."""
     return jnp.sum(v1 * v2, axis=0)
@@ -257,14 +176,13 @@ def _get_particle_collision_response(
         positions: Array of shape (2, n), particle positions.
         velocities: Array of shape (2, n), particle velocities.
         particle_ids: Array of shape (n), particle ids.
-        neighbors: Array of shape (n, max_neighbors), contains each particles
-            neighbors with position corresponding to sorted particle_ids.
-        collisions: Array of shape(n, max_neighbors), mask that is 1 if paticles
-            collide, 0 otherwise, with position corresponding to particle_ids.
+        neighbors: Array of shape (n, max_per_cell * 9), contains each particles
+            neighbors with position corresponding to particle_ids.
+        collisions: Array of shape(n, max_per_cell * 9), mask that is 1 if paticles
+            collide, 0 otherwise, with position corresponding to particle_ids
 
     Returns:
-        velocity_changes: Array of shape (2, n), changes in particle velocity
-            with position corresponding to particle_ids.
+        new_velocities: Array of shape (2, n), new velocities.
     """
     total_collisions = jnp.clip(jnp.sum(collisions, axis=-1), 1, None)
 
@@ -325,8 +243,7 @@ def _get_wall_collision_response(size, positions, velocities):
         velocities: Array of shape (2, n), particle velocities.
 
     Returns:
-        velocity_changes: Array of shape (2, n), changes in particle velocity
-            with position corresponding to particle_ids.
+        new_velocities: Array of shape (2, n), new velocities.
     """
     radii = jnp.ones(positions.shape[1])
 
@@ -355,9 +272,115 @@ def _move(positions, velocities, dt):
     return positions
 
 
+def _get_overlap_movements(particle_ids, positions, neighbors, neighbor_mask):
+    """Compute un-overlapping movements.
+
+    Args:
+        particle_ids: Array of shape (n), contains particle ids in sorted order.
+        positions: Array of shape (2, n), particle positions.
+        neighbors: Array of shape (n, max_per_cell * 9), contains each particles
+            neighbors with position corresponding to particle_ids.
+        neighbors_mask: Array of shape (n, max_per_cell * 9), contains mask where 1
+            for real value and 0 for padding, with position corresponding to
+            particle_ids.
+
+    Returns:
+        position_changes: Array of shape (2, n), changes in position with
+            position corresponding to particle_ids.
+    """
+    def _map_func(particle_id, neighbors, mask):
+        particle_position = positions[:, particle_id]
+        particle_radius = 1
+        neighbor_positions = positions[:, neighbors]
+        neighbor_radii = jnp.ones_like(neighbors)
+
+        collision_normals = neighbor_positions - particle_position[:, None]
+        magnitudes = jnp.linalg.norm(collision_normals, axis=0)
+        collision_normals = jnp.nan_to_num(collision_normals / magnitudes)
+        tangent_dists = neighbor_radii + particle_radius
+        overlap_dists = jnp.clip(tangent_dists - magnitudes, a_min=0) * mask
+
+        position_changes = -(collision_normals * overlap_dists) / 2
+        position_change = jnp.sum(position_changes, axis=-1)
+
+        return position_change
+
+    position_changes = jax.vmap(_map_func)(particle_ids, neighbors, neighbor_mask)
+    position_changes = jnp.transpose(position_changes)
+    return position_changes
+
+
+def _resolve_overlap_movements(ids, pos, neighbors, neighbor_mask):
+    """Un-overlap particles.
+
+    Args:
+        ids: Array of shape (n), contains particle ids in sorted order.
+        pos: Array of shape (2, n), particle positions.
+        neighbors: Array of shape (n, max_per_cell * 9), contains each particles
+            neighbors with position corresponding to particle_ids.
+        neighbors_mask: Array of shape (n, max_per_cell * 9), contains mask where 1
+            for real value and 0 for padding, with position corresponding to
+            particle_ids.
+
+    """
+    def _body_func(_, pos):
+        position_changes = _get_overlap_movements(pos, ids, neighbors, neighbor_mask)
+        return pos + position_changes
+    pos = jax.lax.fori_loop(0, 8, _body_func, pos)
+    return pos
+
+
+def _resolve_wall_movements(size, positions):
+    """Compute wall collision resonses.
+
+    Args:
+        positions: Array of shape (2, n), particle positions.
+        velocities: Array of shape (2, n), particle velocities.
+
+    Returns:
+        velocity_changes: Array of shape (2, n), changes in particle velocity
+            with position corresponding to particle_ids.
+    """
+    position_changes_x = jnp.zeros_like(positions[0])
+    position_changes_y = jnp.zeros_like(positions[1])
+
+    oob_left_x = (positions[0, :] <= 0)
+    oob_right_x = (positions[0, :] >= size)
+    position_changes_x = (
+        ((-positions[0] + 1) * oob_left_x) +
+        ((size - positions[0] - 1) * oob_right_x)
+    )
+
+    oob_up_y = (positions[1, :] <= 0)
+    oob_down_y = (positions[1, :] >= size)
+    position_changes_y = (
+        ((-positions[1] + 1) * oob_up_y) +
+        ((size - positions[1] - 1) * oob_down_y)
+    )
+
+    position_changes = jnp.stack([position_changes_x, position_changes_y], axis=0)
+    return positions + position_changes
+
+
 @partial(jax.jit, static_argnames=['n', 'size', 'n_cells', 'cell_size', 'max_per_cell'])
 def step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
-    """Take single step of the simulation."""
+    """Take single step of the simulation.
+
+    Args:
+        n: Number of particles.
+        size: Size of the simulation in either direction.
+        n_cells: Number of cells of uniform grid in either direction.
+        cell_size: Size of a single uniform grid cell.
+        max_per_cell: Maximium number of particles expected in single cell.
+        ids: Array of shape (n), all particle ids.
+        pos: Array of shape (2, n), all particle positions.
+        vel: Array of shape (2, n), all particle velocities.
+        dt: Timestep size of simulation.
+
+    Returns:
+        pos: Array of shape (2, n), updated particle positions.
+        vel: Array of shape (2, n), updated particle velocities.
+    """
     cell_particle_ids, grid = _build_grid(n, n_cells, cell_size, max_per_cell, ids, pos)
     neighbors, neighbor_mask = _get_neighbors(n_cells, cell_particle_ids, grid)
     collisions = _get_narrow_collisions(ids, pos, neighbors, neighbor_mask)
@@ -370,6 +393,26 @@ def step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
 
 
 def init_simulation(n, size, n_cells, seed, max_per_cell_add):
+    """Initialize simulation.
+
+    Args:
+        n: Number of particles.
+        size: Size of the simulation in either direction.
+        n_cells: Number of cells of uniform grid in either direction.
+        seed: Random number to seed off.
+        max_per_cell_add: Value to increase default max particles per cell
+            calculation by. Must be tuned for higher concentration simulations,
+            as the odds of overlapping particles increases. If simulation is
+            "exploding", this should be increased.
+
+    Returns:
+        cell_size: Size of a single uniform grid cell.
+        n_cells: Number of cells of uniform grid in either direction.
+        max_per_cell: Maximium number of particles expected in single cell.
+        ids: Array of shape (n), all particle ids.
+        positions: Array of shape (2, n), all particle positions.
+        velocities: Array of shape (2, n), all particle velocities.
+    """
     # jax.config.update("jax_enable_x64", True)
     cell_size = (size // n_cells) + (size % n_cells > 0)
     n_cells = n_cells + 2  # Add outer padding to grid
