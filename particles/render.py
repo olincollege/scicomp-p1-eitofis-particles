@@ -81,6 +81,7 @@ class Renderer(mglw.WindowConfig):
         self.vel = vel
         self.initial_pos = pos
         self.shifts = []
+        self.velocities = []
 
     def _init_video_writer(self):
         """Initialize video writer."""
@@ -120,8 +121,12 @@ class Renderer(mglw.WindowConfig):
         plt.figure(figsize = (10,10))
         plt.plot(self.shifts)
         plt.yscale("log")
-        plt.xscale("log")
         fn = os.path.join("data", "shifts")
+        plt.savefig(fn)
+
+        plt.figure(figsize = (10,10))
+        plt.plot(self.velocities)
+        fn = os.path.join("data", "velocities")
         plt.savefig(fn)
 
     def render(self, *_):
@@ -137,7 +142,7 @@ class Renderer(mglw.WindowConfig):
 
         shift = jnp.sum((self.pos - self.initial_pos) ** 2)
         self.shifts.append(shift)
-        # print(f"Total velocity: {jnp.sum(jnp.linalg.norm(vel))}")
+        self.velocities.append(jnp.sum(jnp.linalg.norm(self.vel)))
 
         if self.vw is not None:
             raw = self.fbo.read()
