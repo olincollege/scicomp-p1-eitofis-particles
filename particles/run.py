@@ -17,7 +17,7 @@ def parse_args(args):
         help="Number of particles in simulation.",
     )
     parser.add_argument(
-        "--steps", type=int, default=512,
+        "--steps", type=int, default=None,
         help="Number of steps of simulation.",
     )
     parser.add_argument(
@@ -48,6 +48,7 @@ def parse_args(args):
 def run(args):
     """Run simulation."""
     Renderer._init_args = (
+        args.steps,
         args.n_particles,
         args.size,
         args.n_cells,

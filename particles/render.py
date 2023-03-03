@@ -1,8 +1,7 @@
-import time
-
 import moderngl_window as mglw
 import numpy as np
 import jax.numpy as jnp
+from tqdm import tqdm
 
 from simulation import step, init_simulation
 
@@ -25,7 +24,8 @@ class Renderer(mglw.WindowConfig):
         """
         super().__init__(**kwargs)
 
-        n, size, n_cells, dt, seed = Renderer._init_args
+        steps, n, size, n_cells, dt, seed = Renderer._init_args
+        self.steps = steps
         self.n = int(jnp.sqrt(n)) ** 2
         self.size = size
         self.n_cells = n_cells
@@ -33,7 +33,8 @@ class Renderer(mglw.WindowConfig):
         self.seed = seed
         self._init_renderer()
         self._init_sim()
-        self.time = time.time()
+
+        self.step = 0
 
     def _init_renderer(self):
         self.program = self._make_program()
@@ -61,6 +62,10 @@ class Renderer(mglw.WindowConfig):
         self.vel = vel
 
     def render(self, *_):
+        if self.step == 0:
+            print("\nRunning simulation...")
+            self.pbar = tqdm(total=self.steps)
+
         self.ctx.clear(0.0, 0.0, 0.0, 1.0)
         self.pos, self.vel = step(
             self.n,
@@ -79,9 +84,14 @@ class Renderer(mglw.WindowConfig):
         self.sbo.write(np.array(vel).astype("f4"))
         self.vao.render(instances=self.n)
 
-        current_time = time.time()
-        print(f"FPS: {1 / (current_time - self.time)}")
-        self.time = current_time
+        if self.steps is not None:
+            if self.step >= self.steps:
+                self.pbar.close()
+                self.wnd.destroy()
+                exit()
+        self.step += 1
+        self.pbar.update(1)
+
 
 
     def _make_program(self):
