@@ -1,4 +1,5 @@
 import os
+import pickle
 
 import moderngl_window as mglw
 import numpy as np
@@ -6,7 +7,6 @@ import jax.numpy as jnp
 from tqdm import tqdm
 import cv2
 from PIL import Image
-import matplotlib
 import matplotlib.pyplot as plt
 
 from simulation import step, init_simulation
@@ -126,13 +126,13 @@ class Renderer(mglw.WindowConfig):
         plt.plot(self.shifts)
         plt.yscale("log")
         plt.xscale("log")
-        fn = os.path.join("data", "shifts")
+        fn = os.path.join("data", f"shifts_{self.n}")
         plt.savefig(fn)
 
-        plt.figure(figsize = (10,10))
-        plt.plot(self.velocities)
-        fn = os.path.join("data", "velocities")
-        plt.savefig(fn)
+        fn = os.path.join("data", f"raw_{self.n}.pkl")
+        with open(fn, "wb") as f:
+            pickle.dump(self.shifts, f)
+
 
     def render(self, *_):
         """Overall render step."""
@@ -148,7 +148,6 @@ class Renderer(mglw.WindowConfig):
 
         shift = jnp.mean((self.pos[0] - self.initial_pos[0]) ** 2)
         self.shifts.append(shift)
-        self.velocities.append(jnp.mean(jnp.linalg.norm(self.vel)))
 
         if self.vw is not None:
             raw = self.fbo.read()
