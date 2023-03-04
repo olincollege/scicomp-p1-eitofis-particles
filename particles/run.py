@@ -33,7 +33,7 @@ def parse_args(args):
         help="Size of simulation environment.",
     )
     parser.add_argument(
-        "--n_cells", type=int, default=64,
+        "--n-cells", type=int, default=64,
         help="Number of cells in uniform grid.",
     )
     parser.add_argument(
@@ -45,7 +45,7 @@ def parse_args(args):
         help="Random seed."
     )
     parser.add_argument(
-        "--max-per-cell", type=int, default=10,
+        "--max-per-cell", type=int, default=0,
         help=(
             "Number to add to default max per cell calculation. "
             "Collisions allow for greater than expected number of"

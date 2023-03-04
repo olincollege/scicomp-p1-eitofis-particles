@@ -92,7 +92,7 @@ class Renderer(mglw.WindowConfig):
             self.vw = None
             return
         assert self.steps is not None, "Cannot save video without steps specified!"
-        fp = os.path.join("data", self.save)
+        fp = os.path.join("data", f"{self.n}_{self.save}")
         fps = 60.0
         fourcc = cv2.VideoWriter_fourcc("m", "p", "4", "v")
         self.vw = cv2.VideoWriter(fp, fourcc, fps, self.window_size)
@@ -140,10 +140,9 @@ class Renderer(mglw.WindowConfig):
             print("\nRunning simulation...")
             self.pbar = tqdm(total=self.steps)
 
-        if self.vw:
-            self.fbo.use()
-
         for _ in range(self.sub_steps):
+            if self.vw:
+                self.fbo.use()
             self._render()
 
         shift = jnp.mean((self.pos[0] - self.initial_pos[0]) ** 2)
