@@ -1,6 +1,8 @@
 # Particle Simulation
 
-https://user-images.githubusercontent.com/26287286/222632792-91d1d23a-1308-4cad-b08c-5581b38f6ed4.mp4
+https://user-images.githubusercontent.com/26287286/222931373-cffc3788-5bfd-4bbc-b1fc-e153e08db200.mp4
+
+*100,000 particles in a 1024x1024 grid.*
 
 ## Overview
 
