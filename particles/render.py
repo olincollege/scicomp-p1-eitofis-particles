@@ -97,6 +97,7 @@ class Renderer(mglw.WindowConfig):
         fourcc = cv2.VideoWriter_fourcc("m", "p", "4", "v")
         self.vw = cv2.VideoWriter(fp, fourcc, fps, self.window_size)
         self.fbo = self.ctx.simple_framebuffer(self.window_size)
+        print("Video writer initialized...")
 
     def _render(self):
         """Simulation render step."""
@@ -107,6 +108,7 @@ class Renderer(mglw.WindowConfig):
             self.n_cells,
             self.cell_size,
             self.max_per_cell,
+            self.solver_steps,
             self.ids,
             self.pos,
             self.vel,

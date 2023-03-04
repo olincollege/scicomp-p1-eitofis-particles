@@ -310,7 +310,7 @@ def _get_overlap_movements(particle_ids, positions, neighbors, neighbor_mask):
     return position_changes
 
 
-def _resolve_overlap_movements(ids, pos, neighbors, neighbor_mask):
+def _resolve_overlap_movements(solver_steps, ids, pos, neighbors, neighbor_mask):
     """Un-overlap particles.
 
     Args:
@@ -326,7 +326,7 @@ def _resolve_overlap_movements(ids, pos, neighbors, neighbor_mask):
     def _body_func(_, pos):
         position_changes = _get_overlap_movements(ids, pos, neighbors, neighbor_mask)
         return pos + position_changes
-    pos = jax.lax.fori_loop(0, 20, _body_func, pos)
+    pos = jax.lax.fori_loop(0, solver_steps, _body_func, pos)
     return pos
 
 
@@ -362,8 +362,13 @@ def _resolve_wall_movements(size, positions):
     return positions + position_changes
 
 
-@partial(jax.jit, static_argnames=['n', 'size', 'n_cells', 'cell_size', 'max_per_cell'])
-def step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
+@partial(
+    jax.jit,
+    static_argnames=[
+        'n', 'size', 'n_cells', 'cell_size', 'max_per_cell', 'solver_steps'
+    ]
+)
+def step(n, size, n_cells, cell_size, max_per_cell, solver_steps, ids, pos, vel, dt):
     """Take single step of the simulation.
 
     Args:
@@ -387,7 +392,7 @@ def step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
     vel = _get_wall_collision_response(size, pos, vel)
     vel = _get_particle_collision_response(pos, vel, ids, neighbors, collisions)
     pos = _move(pos, vel, dt)
-    pos = _resolve_overlap_movements(ids, pos, neighbors, neighbor_mask)
+    pos = _resolve_overlap_movements(solver_steps, ids, pos, neighbors, neighbor_mask)
     pos = _resolve_wall_movements(size, pos)
     return pos, vel
 

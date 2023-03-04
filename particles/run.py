@@ -21,7 +21,7 @@ def parse_args(args):
         help="Number of steps of simulation.",
     )
     parser.add_argument(
-        "--sub-steps", type=int, default=10,
+        "--sub-steps", type=int, default=1,
         help="Number of steps per frame of simulation.",
     )
     parser.add_argument(
