@@ -35,12 +35,14 @@ class Renderer(mglw.WindowConfig):
         """
         super().__init__(**kwargs)
 
-        steps, n, size, n_cells, dt, seed, save, mps = Renderer._init_args
-        self.steps = steps
+        s, sub_s, solver_s, n, size, nc, dt, seed, save, mps = Renderer._init_args
+        self.steps = s
+        self.sub_steps = sub_s
+        self.solver_steps = solver_s
         self.n = int(jnp.sqrt(n)) ** 2
         self.size = size
-        self.n_cells = n_cells
-        self.dt = dt
+        self.n_cells = nc
+        self.dt = dt / sub_s
         self.seed = seed
         self.max_per_cell = mps
         self.save = save
@@ -121,6 +123,7 @@ class Renderer(mglw.WindowConfig):
         plt.figure(figsize = (10,10))
         plt.plot(self.shifts)
         plt.yscale("log")
+        plt.xscale("log")
         fn = os.path.join("data", "shifts")
         plt.savefig(fn)
 
@@ -138,11 +141,12 @@ class Renderer(mglw.WindowConfig):
         if self.vw:
             self.fbo.use()
 
-        self._render()
+        for _ in range(self.sub_steps):
+            self._render()
 
-        shift = jnp.sum((self.pos - self.initial_pos) ** 2)
+        shift = jnp.mean((self.pos[0] - self.initial_pos[0]) ** 2)
         self.shifts.append(shift)
-        self.velocities.append(jnp.sum(jnp.linalg.norm(self.vel)))
+        self.velocities.append(jnp.mean(jnp.linalg.norm(self.vel)))
 
         if self.vw is not None:
             raw = self.fbo.read()

@@ -326,7 +326,7 @@ def _resolve_overlap_movements(ids, pos, neighbors, neighbor_mask):
     def _body_func(_, pos):
         position_changes = _get_overlap_movements(ids, pos, neighbors, neighbor_mask)
         return pos + position_changes
-    pos = jax.lax.fori_loop(0, 8, _body_func, pos)
+    pos = jax.lax.fori_loop(0, 20, _body_func, pos)
     return pos
 
 
@@ -347,15 +347,15 @@ def _resolve_wall_movements(size, positions):
     oob_left_x = (positions[0, :] <= 0)
     oob_right_x = (positions[0, :] >= size)
     position_changes_x = (
-        ((-positions[0] + 1) * oob_left_x) +
-        ((size - positions[0] - 1) * oob_right_x)
+        ((-positions[0] + 0) * oob_left_x) +
+        ((size - positions[0] - 0) * oob_right_x)
     )
 
     oob_up_y = (positions[1, :] <= 0)
     oob_down_y = (positions[1, :] >= size)
     position_changes_y = (
-        ((-positions[1] + 1) * oob_up_y) +
-        ((size - positions[1] - 1) * oob_down_y)
+        ((-positions[1] + 0) * oob_up_y) +
+        ((size - positions[1] - 0) * oob_down_y)
     )
 
     position_changes = jnp.stack([position_changes_x, position_changes_y], axis=0)
@@ -384,8 +384,8 @@ def step(n, size, n_cells, cell_size, max_per_cell, ids, pos, vel, dt):
     cell_particle_ids, grid = _build_grid(n, n_cells, cell_size, max_per_cell, ids, pos)
     neighbors, neighbor_mask = _get_neighbors(n_cells, cell_particle_ids, grid)
     collisions = _get_narrow_collisions(ids, pos, neighbors, neighbor_mask)
-    vel = _get_particle_collision_response(pos, vel, ids, neighbors, collisions)
     vel = _get_wall_collision_response(size, pos, vel)
+    vel = _get_particle_collision_response(pos, vel, ids, neighbors, collisions)
     pos = _move(pos, vel, dt)
     pos = _resolve_overlap_movements(ids, pos, neighbors, neighbor_mask)
     pos = _resolve_wall_movements(size, pos)

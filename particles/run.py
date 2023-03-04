@@ -21,6 +21,14 @@ def parse_args(args):
         help="Number of steps of simulation.",
     )
     parser.add_argument(
+        "--sub-steps", type=int, default=10,
+        help="Number of steps per frame of simulation.",
+    )
+    parser.add_argument(
+        "--solver-steps", type=int, default=8,
+        help="Number of steps to run overlap solver.",
+    )
+    parser.add_argument(
         "--size", type=int, default=256,
         help="Size of simulation environment.",
     )
@@ -67,6 +75,8 @@ def run(args):
     """Run simulation."""
     Renderer._init_args = (
         args.steps,
+        args.sub_steps,
+        args.solver_steps,
         args.n_particles,
         args.size,
         args.n_cells,
