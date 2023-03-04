@@ -365,10 +365,28 @@ def _resolve_wall_movements(size, positions):
 @partial(
     jax.jit,
     static_argnames=[
-        'n', 'size', 'n_cells', 'cell_size', 'max_per_cell', 'solver_steps'
+        'n',
+        'size',
+        'n_cells',
+        'cell_size',
+        'max_per_cell',
+        'sub_steps',
+        'solver_steps',
     ]
 )
-def step(n, size, n_cells, cell_size, max_per_cell, solver_steps, ids, pos, vel, dt):
+def step(
+    n,
+    size,
+    n_cells,
+    cell_size,
+    max_per_cell,
+    sub_steps,
+    solver_steps,
+    ids,
+    pos,
+    vel,
+    dt
+):
     """Take single step of the simulation.
 
     Args:
@@ -377,6 +395,8 @@ def step(n, size, n_cells, cell_size, max_per_cell, solver_steps, ids, pos, vel,
         n_cells: Number of cells of uniform grid in either direction.
         cell_size: Size of a single uniform grid cell.
         max_per_cell: Maximium number of particles expected in single cell.
+        sub_steps: Number of sub steps to take per render step.
+        solver_steps: How many times to run un-overlap algorithm.
         ids: Array of shape (n), all particle ids.
         pos: Array of shape (2, n), all particle positions.
         vel: Array of shape (2, n), all particle velocities.
@@ -386,14 +406,18 @@ def step(n, size, n_cells, cell_size, max_per_cell, solver_steps, ids, pos, vel,
         pos: Array of shape (2, n), updated particle positions.
         vel: Array of shape (2, n), updated particle velocities.
     """
-    cell_particle_ids, grid = _build_grid(n, n_cells, cell_size, max_per_cell, ids, pos)
-    neighbors, neighbor_mask = _get_neighbors(n_cells, cell_particle_ids, grid)
-    collisions = _get_narrow_collisions(ids, pos, neighbors, neighbor_mask)
-    vel = _get_wall_collision_response(size, pos, vel)
-    vel = _get_particle_collision_response(pos, vel, ids, neighbors, collisions)
-    pos = _move(pos, vel, dt)
-    pos = _resolve_overlap_movements(solver_steps, ids, pos, neighbors, neighbor_mask)
-    pos = _resolve_wall_movements(size, pos)
+    def _body_func(_, state):
+        pos, vel = state
+        cell_particle_ids, grid = _build_grid(n, n_cells, cell_size, max_per_cell, ids, pos)
+        neighbors, neighbor_mask = _get_neighbors(n_cells, cell_particle_ids, grid)
+        collisions = _get_narrow_collisions(ids, pos, neighbors, neighbor_mask)
+        vel = _get_wall_collision_response(size, pos, vel)
+        vel = _get_particle_collision_response(pos, vel, ids, neighbors, collisions)
+        pos = _move(pos, vel, dt)
+        pos = _resolve_overlap_movements(solver_steps, ids, pos, neighbors, neighbor_mask)
+        pos = _resolve_wall_movements(size, pos)
+        return pos, vel
+    pos, vel = jax.lax.fori_loop(0, sub_steps, _body_func, (pos, vel))
     return pos, vel
 
 

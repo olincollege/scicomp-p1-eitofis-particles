@@ -108,6 +108,7 @@ class Renderer(mglw.WindowConfig):
             self.n_cells,
             self.cell_size,
             self.max_per_cell,
+            self.sub_steps,
             self.solver_steps,
             self.ids,
             self.pos,
@@ -140,10 +141,10 @@ class Renderer(mglw.WindowConfig):
             print("\nRunning simulation...")
             self.pbar = tqdm(total=self.steps)
 
-        for _ in range(self.sub_steps):
-            if self.vw:
-                self.fbo.use()
-            self._render()
+        if self.vw:
+            self.fbo.use()
+
+        self._render()
 
         shift = jnp.mean((self.pos[0] - self.initial_pos[0]) ** 2)
         self.shifts.append(shift)
