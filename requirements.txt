@@ -1,0 +1,10 @@
+matplotlib==3.6.3
+numpy==1.24.1
+pandas==1.5.3
+jax==0.4.4
+jaxlib==0.4.4
+plotly==5.13
+moderngl==5.8
+moderngl-window==2.4
+tqdm==4.64
+opencv-python==4.7.0.72
