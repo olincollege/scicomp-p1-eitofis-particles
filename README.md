@@ -1,10 +1,10 @@
 # Particle Simulation
 
 <div align="center">
-  <video src="https://user-images.githubusercontent.com/26287286/222939236-d827a0cc-1cdd-4b45-bf68-bf74a9c3c219.mp4" width=400/>
+  <video src="https://user-images.githubusercontent.com/26287286/222981769-34b26f5b-3489-4bc6-a59e-9de8b78c8d3c.mp4" width=400/>
 </div>
 
-<div align="center"><i>100,000 particles in a 832x832 grid></i></div>
+<div align="center"><i>1,000,000 particles in a 2048x2048 grid></i></div>
 
 ## Overview
 
@@ -52,8 +52,8 @@ Broadly, the simulation flow is as such:
 1. Build uniform grid
 2. Get particle neighbors
 3. Get collisions
-4. Get particle collision responses
 5. Get wall collision responses
+4. Get particle collision responses
 6. Move particles
 7. Resolve particle overlaps
 8. Resolve out-of-bounds particles
@@ -120,6 +120,8 @@ At higher densities, crystallization occurs even faster.
 
 And at maximium saturation, the entire simulation is almost static.
 
+From observing the simulation, we can confirm that the simple dyanmics of the simulation work as expected - particle respect the boundaries of the simulation, and collisions between particles under low concentration look realistic. However, the behavior where red particles, particles that have some velocity, collide and stick to large clusters of blue, unmoving particles is concerning. One would expect that the moving particle distributes (and loses) its velocity on collision and sticks, or retains its velocity and bounces. Sticking while retaining the velocity is concerning. This perhaps points to an unrealistic portion of the simulation, where the velocity resulting from a collision isn't quite realistically modeled.
+
 <div align="center">
   <img src="assets/shifts_256.png"/>
 </div> 
@@ -142,3 +144,9 @@ Similar patterns hold up for larger numbers of particles. For this set of runs, 
 </div>
 
 <div align="center"><i>100,000 particles in a 832x832 grid</i></div>
+
+<div align="center">
+  <video src="https://user-images.githubusercontent.com/26287286/222981744-037424fc-5bba-4782-9d68-911504f80786.mp4" width=400/>
+</div>
+
+<div align="center"><i>100,000 particles in a 694x694 grid</i></div>
