@@ -122,7 +122,7 @@ And at maximium saturation, the entire simulation is almost static.
 
 <div align="center">
   <img src="assets/shifts_256.png"/>
-</div>
+</div> 
 
 Looking at the average change in X position over time, we can partially see our observations. In particular, it is clear that the 20,000 particle simulation that was operating at a high density had less movement overtime. However, contrary to our observations, the other three simulations all seem to present a similar amount of movement over time. Considering that in all 3 some particles continue to move throughout the simulation, perhaps this makes sense.
 
