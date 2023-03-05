@@ -4,7 +4,7 @@
   <video src="https://user-images.githubusercontent.com/26287286/222939236-d827a0cc-1cdd-4b45-bf68-bf74a9c3c219.mp4" width=400/>
 </div>
 
-<div align="center">100,000 particles in a 832x832 grid</div>
+<div align="center"><i>100,000 particles in a 832x832 grid></i></div>
 
 ## Overview
 
@@ -86,34 +86,59 @@ The simulation is able to run efficiently, rendering up to 100,000 particles at 
 
 (Note: Red indicates particles moving at faster speeds, while blue indicates slower speeds.)
 
+### Base Results
+
 <div align="center">
-  <video src="https://user-images.githubusercontent.com/26287286/222931373-cffc3788-5bfd-4bbc-b1fc-e153e08db200.mp4" width=400/>
+  <video src="https://user-images.githubusercontent.com/26287286/222972214-aedc30b1-b09a-474a-b3c4-c241ce43be4f.mp4"/>
 </div>
 
-<div align="center">100,000 particles in a 1024x1024 grid</div>
+<div align="center"><i>5,000 particles in a 256x256 grid</i></div>
 
-When the particles are relatively un-compressed, the particles move about freely.
+When there are a smaller number of particles, they are relatively un-compressed and the particles move about freely.
+
+<div align="center">
+  <video src="https://user-images.githubusercontent.com/26287286/222972430-c86c917f-f151-43f3-9a70-90253a850faa.mp4"/>
+</div>
+
+<div align="center"><i>10,000 particles in a 256x256 grid</i></div>
+
+As the number of particles increase, we start to see some crystallization along the edges of the simulation.
+
+<div align="center">
+  <video src="https://user-images.githubusercontent.com/26287286/222972428-e71b0a46-5f21-4c92-8fca-72508a9c738a.mp4"/>
+</div>
+
+<div align="center"><i>15,000 particles in a 256x256 grid</i></div>
+
+At higher densities, crystallization occurs even faster.
+
+<div align="center">
+  <video src="https://user-images.githubusercontent.com/26287286/222972421-9cbf7a43-3009-4afa-834e-aa1c274256c4.mp4"/>
+</div>
+
+<div align="center"><i>20,000 particles in a 256x256 grid</i></div>
+
+And at maximium saturation, the entire simulation is almost static.
+
+<div align="center">
+  <img src="assets/shifts_256.png"/>
+</div>
+
+Looking at the average change in X position over time, we can partially see our observations. In particular, it is clear that the 20,000 particle simulation that was operating at a high density had less movement overtime. However, contrary to our observations, the other three simulations all seem to present a similar amount of movement over time. Considering that in all 3 some particles continue to move throughout the simulation, perhaps this makes sense.
+
+### Large Scale Results
+
+Similar patterns hold up for larger numbers of particles. For this set of runs, we fixed the number of particles at 100,000, and ran at various sizes to test different densities.
+
+<div align="center">
+  <video src="https://user-images.githubusercontent.com/26287286/222931373-cffc3788-5bfd-4bbc-b1fc-e153e08db200.mp4"/>
+</div>
+
+<div align="center"><i>100,000 particles in a 1024x1024 grid</i></div>
+
 
 <div align="center">
   <video src="https://user-images.githubusercontent.com/26287286/222939236-d827a0cc-1cdd-4b45-bf68-bf74a9c3c219.mp4" width=400/>
 </div>
 
-<div align="center">100,000 particles in a 832x832 grid</div>
-
-But, when placed in a slightly smaller simulation, the same number of particles behaves dramatically differently. Here, they quickly start to crystallize and form concrete clusters throughout the environment. 
-
-The dynamics seem to break down in this scenario when particles are begin pressed against the boundary of the simulation. In particular, particles hitting the static clusters retain their velocity but "stick" to the cluster. Generally, we might instead expect that the particle either loses its velocity and sticks to the cluster, or retains its velocity and bounces off.
-
-Finally, when placed in an extremely confined simulation, the particles totally lock together and primarily stay solid.
-
-
-Regardless, we do 
-
-![results](assets/shifts.png)
-
-The log-log graph of particle shift from their original positions has a slope significantly higher than 1. This indicates that the dynamics aren't quite right - we would expect the slope of the graph to be ~1 for non-glass liquids. 
-
-![velocities](assets/velocities.png)
-
-The sum of magnitudes of velocities, on the other hand, is slightly more promising. While the overall value does shift, some degree of inaccuracy is expected from floating point error. More encouraginly, there is no clear pattern to this shifts, and the deviation is not too great.
-
+<div align="center"><i>100,000 particles in a 832x832 grid</i></div>
